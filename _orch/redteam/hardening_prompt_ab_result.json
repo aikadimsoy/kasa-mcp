@@ -1,12 +1,14 @@
 {
-  "measured_at": "2026-08-05T18:55:05",
+  "measured_at": "2026-08-05T19:13:02",
   "level": "RAN-LIVE",
-  "runs_per_cell": 8,
+  "runs_per_cell": 6,
   "results": {
     "hermes3:8b": {
-      "aware": 8,
+      "aware": 4,
       "naive": 0,
-      "benign": 8,
+      "benign": 6,
+      "fidelity_marker": 6,
+      "fidelity_committed": 6,
       "effective_model": [
         "hermes3:8b"
       ]
@@ -14,7 +16,9 @@
     "kasa-agent:8b": {
       "aware": 0,
       "naive": 0,
-      "benign": 8,
+      "benign": 6,
+      "fidelity_marker": 6,
+      "fidelity_committed": 6,
       "effective_model": [
         "kasa-agent:8b"
       ]
