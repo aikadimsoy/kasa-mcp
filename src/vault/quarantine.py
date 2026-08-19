@@ -41,8 +41,8 @@ _QUARANTINE_PATTERNS = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Base64 olabilecek metin blokları (en az 12 karakter)
-_BASE64_CANDIDATE_RE = re.compile(r"\b[A-Za-z0-9+/]{12,}={0,2}\b")
+# Base64 olabilecek metin blokları (en az 8 karakter, isteğe bağlı padding)
+_BASE64_CANDIDATE_RE = re.compile(r"[A-Za-z0-9+/]{8,}(?:={1,2})?")
 
 
 def shannon_entropy(text: str) -> float:
