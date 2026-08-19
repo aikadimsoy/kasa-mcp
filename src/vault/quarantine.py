@@ -26,17 +26,10 @@ from typing import Optional, Tuple
 # Görünmez ve yönlendirici sıfır genişlikli karakterler
 _ZERO_WIDTH_CHARS = re.compile(r"[\u200B-\u200D\uFEFF\u202A-\u202E\u2060-\u206F]")
 
-# Çok Dilli ve Genişletilmiş Emir Kipi Desenleri
+# Sadece Yapısal ve Kesin Tehlike İfade Eden Kalıplar (Namespace Dışında Kalanlar)
 _QUARANTINE_PATTERNS = re.compile(
-    r"\bignore\s+(?:all|previous|above|everything|instructions|rules)\b|"
-    r"\bdisregard\b|"
-    r"\byou\s+must\b|"
     r"\b(?:system|admin|root|assistant|sistem)\s*:|"
     r"\bSYSTEM\s+OVERRIDE\b|"
-    r"\b(?:reply\s+with|output\s+only|append\b.*\bto\s+every)\b|"
-    r"\b(?:yoksay|gecersiz\s+k[ıi]l|talimatlar[ıi]\s+unut|kurallar[ıi]\s+yoksay)\b|"
-    r"\b(?:ignoriere\s+alle\s+anweisungen|alle\s+regeln\s+vergessen)\b|"
-    r"\b(?:игнорир\w*|забудь\s+инструкци\w*)\b|"
     r"<\s*script\b|\brm\s+-rf\b",
     re.IGNORECASE | re.MULTILINE,
 )

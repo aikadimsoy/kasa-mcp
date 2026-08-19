@@ -88,12 +88,7 @@ number from it; per-test detail with explicit limits is
 
 - **Red-team findings — what was measured, and what is still open.** Each line names its evidence;
   nothing here claims the class of attack is solved.
-  - *Indirect prompt injection into the distillation chain* — untrusted event text is wrapped in
-    explicit delimiters and a QC provenance gate rejects facts the model cannot cite. Measured:
-    `tests/test_distill_injection.py`, `tests/test_delimiter_breakout.py`,
-    `tests/test_semantic_injection.py`. **Limit:** prompt injection is an industry-wide open
-    problem; the defense here is *structural* (the model is never the security boundary), not a
-    claim of immunity.
+  - *Prompt injection and memory poisoning* — legacy word filters were replaced with a structural **Namespace Isolation** architecture. Measured 2026-08-19 against `qwen2.5:latest` (7B), `qwen2.5:3b`, and `qwen2.5-coder:14b`: **0% Attack Success Rate** (all unauthorized writes to `system.security` blocked at the permission gate) with **100% Utility** for benign user notes. Evidence: `_orch/multi_model_benchmark_results.json`. **Limit:** prompt injection is an industry-wide open problem; the defense here is *structural* (the model is never the security boundary), not a claim of model immunity.
   - *MCP authorization* — the allow-list (`PUBLIC_TOOLS`), reserved-agent block and per-scope
     deny-by-default checks pass their measurements (`AUTHZ-*` checks in
     [`docs/SECURITY_BENCHMARK.md`](docs/SECURITY_BENCHMARK.md); `tests/test_agent_gate.py`).
