@@ -1073,7 +1073,23 @@ class KasaApi:
     def set_window(self, win):
         self._win = win
 
+    def _verify_origin(self) -> bool:
+        if not self._win:
+            return False
+        try:
+            url = self._win.get_current_url()
+        except Exception:
+            return False
+        if not url:
+            return True
+        if url.startswith("http://127.0.0.1") or url.startswith("http://localhost") or url.startswith("file://") or url.startswith("about:"):
+            return True
+        print(f"[SECURITY] API block: Origin {url} is not allowed to call privileged JS API.")
+        return False
+
     def ingest(self, url, title, body_text, cookies_json="[]"):
+        if not self._verify_origin():
+            return
         threading.Thread(
             target=self._post,
             args=(url, title, body_text, cookies_json),
@@ -1132,6 +1148,8 @@ class KasaApi:
         return _read_browser_config()
 
     def set_proxy(self, enabled, address):
+        if not self._verify_origin():
+            return {"proxy_enabled": False, "proxy_address": ""}
         # MERGE: mevcut config'i oku, sadece proxy anahtarlarini guncelle (privacy_level'i ezme)
         cfg = _read_browser_config()
         cfg["proxy_enabled"] = bool(enabled)
@@ -1150,6 +1168,8 @@ class KasaApi:
         return _read_browser_config().get("privacy_level") or "strict"
 
     def set_level(self, level):
+        if not self._verify_origin():
+            return "strict"
         allowed = ("off", "standard", "strict", "paranoid")
         lvl = level if level in allowed else "strict"
         # GUVENLIK SINIRI (deterministik, JS degil): paranoid = agresif/site-kirabilen kademe;
@@ -1240,6 +1260,8 @@ class KasaApi:
         return True
 
     def adv_unlock(self, pw):
+        if not self._verify_origin():
+            return False
         cfg = _read_browser_config()
         rec = cfg.get("adv_pw")
         if not rec:

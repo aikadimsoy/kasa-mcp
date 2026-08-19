@@ -200,8 +200,13 @@ class VaultTools:
         if is_protected_namespace:
             reason = f"structural-violation: unauthorized write attempt to protected namespace '{key}'"
         else:
-            # Faz-2 (G3/ASI06): karantina degerlendirmesi. Supheli yazim CANLIYA girmez
-            reason = ("forced" if quarantine else None) if quarantine is not None else _quarantine_reason(value)
+            # F-POISON FIX: Ajan ve Distiller yazımları (system hariç) bağımsız bir 'Hakem (Judge)' 
+            # tarafından epistemik olarak (iddia vs kaynak metin) doğrulanana kadar karantinada bekler.
+            if self.agent_id != "system" and quarantine is None:
+                reason = "pending-semantic-validation"
+            else:
+                # Faz-2 (G3/ASI06): karantina degerlendirmesi.
+                reason = ("forced" if quarantine else None) if quarantine is not None else _quarantine_reason(value)
             
         if reason:
             cursor.execute(

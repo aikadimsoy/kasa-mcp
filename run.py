@@ -65,6 +65,13 @@ def _run_export(args):
 def main():
     args = parse_args()
 
+    # Egress kalkanını devreye al (L2)
+    try:
+        from src.vault.egress_guard import enable_egress_guard
+        enable_egress_guard()
+    except ImportError:
+        pass
+
     # Export alt komutu
     if args.command == "export":
         _run_export(args)
