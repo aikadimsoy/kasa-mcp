@@ -19,7 +19,7 @@ Windows'ta Ajan Tabanlı Tarama için Egemen, Yerel-Öncelikli bir Hafıza Kasas
 > | Araç yetkisini sıradan kodla sınırlar | deterministik aracı; model asla sınır değildir |
 > | Hash-zincirli denetim defteri tutar | kurcalama ve silme tespiti ölçümle PASS |
 > | Ajan kimliğini token'a bağlar | gerçek sunucuya karşı 7/7 kontrol, pozitif **ve** negatif — `_orch/redteam/fimp_live_verify.py` |
-> | 323 test geçiyor | 2026-08-05 koşusu (+1 xfail), **izole bir kopyada** — yalnız kendi içinden import ederek |
+> | 367 test geçiyor | 2026-08-19 koşusu (+1 xfail — xfail bir geçiş değil, beklenen başarısızlıktır; bu yüzden "%100 geçti" denmez). Önceki sayılar da gerçek koşulardı: 2026-08-05'te 323, tarayıcının üç mock testi on dört gerçek-sunucu testiyle değiştirilmeden önce 357 |
 >
 > **İddia EDİLMEYENLER** — bunlar açık, yazılı, ve bir kısmı ölçülmüş başarısızlıktır:
 > tam at-rest şifreleme, egress kontrolü, bağımsız güvenlik denetimi. Ağdan gelen bir çağıran
