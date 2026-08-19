@@ -56,6 +56,26 @@ class VaultTools:
         )
         return cursor.fetchone() is not None
 
+    def _check_rate_limit(self, action: str, limit: int, window_sec: int) -> None:
+        """
+        Circuit Breaker (Sigorta): Ajanın belirli bir süre içindeki işlem sayısını denetler.
+        Sistem (system) ajanı bu kuraldan muaftır. (Ajan ele geçirilmesine karşı)
+        """
+        if self.agent_id == "system":
+            return
+            
+        cursor = self._db().cursor()
+        now = time.time()
+        start_time = now - window_sec
+        cursor.execute(
+            "SELECT COUNT(*) FROM audit WHERE agent_id = ? AND action = ? AND timestamp >= ?",
+            (self.agent_id, action, start_time)
+        )
+        count = cursor.fetchone()[0]
+        if count >= limit:
+            self.audit_chain.record(self.agent_id, f"rate_limit_{action}", {"result": "circuit_breaker_tripped", "limit": limit})
+            raise PermissionError(f"Circuit Breaker (Sigorta) Tetiklendi: Ajan '{self.agent_id}' son {window_sec} saniyede {limit} işlem limitini aştı.")
+
     def grant_permission(self, scope: str) -> None:
         """Ajan için belirli bir kapsam izni verir (sistem aracı, MVP-0 helper).
 
@@ -137,6 +157,16 @@ class VaultTools:
             İşlem sonucunu belirten bir sözlük. Karantinaya alindiysa status="quarantined".
         """
         action = "profile_write"
+        
+        # HIZ SINIRI (Circuit Breaker): 60 saniyede maksimum 50 profil yazma işlemi
+        self._check_rate_limit(action, limit=50, window_sec=60)
+        
+        # BOYUT SINIRI (Schema & Length Enforcer): Maksimum 10KB (10240 byte)
+        payload_size = len(json.dumps(value, ensure_ascii=False).encode('utf-8'))
+        if payload_size > 10240:
+            self.audit_chain.record(self.agent_id, action, {"key": key, "result": "structural_violation", "reason": "payload_too_large", "size": payload_size})
+            raise ValueError(f"Yapısal İhlal: Yazılmak istenen veri ({payload_size} byte) KASA maksimum limitini (10240 byte) aşıyor. DoS (Denial of Service) kalkanı tetiklendi.")
+            
         # L2: audit'e ham `value` YAZILMAZ (tools.py:109 yan-kanal) -> digest. provenance ID'ler, plaintext.
         details = {"key": key, "value": _digest(value), "provenance": provenance}
 
@@ -157,9 +187,22 @@ class VaultTools:
         # L2: value at-rest AES-GCM sifrelenir (AAD = profile|value|key). provenance = event-ID'ler, plaintext.
         enc_value = cell_crypt.encrypt_cell(json.dumps(value), self._key(), cell_crypt.aad_profile(key))
 
-        # Faz-2 (G3/ASI06): karantina degerlendirmesi. Supheli yazim CANLIYA girmez -> ayri
-        # profile_quarantine tablosunda tutulur (tespit + karantina + atif). Sahip serbest birakir.
-        reason = ("forced" if quarantine else None) if quarantine is not None else _quarantine_reason(value)
+        # YAPISAL SAVUNMA (Namespace Isolation)
+        # Eger ajan (system disinda) kritik bir isim uzayina yazmaya calisiyorsa, icerige bakilmaksizin karantinaya alinir.
+        is_protected_namespace = False
+        if self.agent_id != "system":
+            # Kritik on-ekler veya son-ekler
+            if key.startswith(("system.", "admin.", "config.", "security.")):
+                is_protected_namespace = True
+            elif key.endswith((".role", ".permissions", ".auth", ".token")):
+                is_protected_namespace = True
+
+        if is_protected_namespace:
+            reason = f"structural-violation: unauthorized write attempt to protected namespace '{key}'"
+        else:
+            # Faz-2 (G3/ASI06): karantina degerlendirmesi. Supheli yazim CANLIYA girmez
+            reason = ("forced" if quarantine else None) if quarantine is not None else _quarantine_reason(value)
+            
         if reason:
             cursor.execute(
                 "INSERT INTO profile_quarantine (key, value, provenance, agent_id, reason, created_at) VALUES (?,?,?,?,?,?)",
@@ -419,6 +462,16 @@ class VaultTools:
             İşlem sonucunu belirten bir sözlük.
         """
         action = "event_ingest"
+        
+        # HIZ SINIRI (Circuit Breaker): 60 saniyede maksimum 100 olay girişi
+        self._check_rate_limit(action, limit=100, window_sec=60)
+        
+        # BOYUT SINIRI: Maksimum 50KB olay hacmi
+        payload_size = len(json.dumps(content, ensure_ascii=False).encode('utf-8'))
+        if payload_size > 51200:
+            self.audit_chain.record(self.agent_id, action, {"source": source, "result": "structural_violation", "reason": "payload_too_large"})
+            raise ValueError(f"Yapısal İhlal: Olay boyutu ({payload_size} byte) maksimum 50KB sınırını aşıyor.")
+        
         # L2: ham `content` audit'e YAZILMAZ -> digest (forget/unutulma-hakki ile tutarli).
         details = {"source": source, "type": type, "content": _digest(content), "ttl_days": ttl_days}
 
