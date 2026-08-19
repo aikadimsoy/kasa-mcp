@@ -47,6 +47,11 @@ def run_demo():
     print_banner()
 
     # Create temporary vault and mock filesystem environment
+    # Turkce not: Demo, kendi iddiasini dogrulayamazsa BUNU SOYLEMELI ve sifirdan
+    # farkli bir cikis kodu dondurmeli. Aksi halde "COMPLETED SUCCESSFULLY" satiri
+    # her kosuda basilir ve demo, olcmedigi bir sonucu ilan etmis olur.
+    demo_failed = False
+
     demo_dir = Path(tempfile.mkdtemp(prefix="kasa_demo_"))
     mock_ssh_key = demo_dir / "mock_id_rsa"
     mock_key_content = "-----BEGIN " + "OPENSSH PRIVATE KEY-----\nMOCK_SECRET_KEY_FOR_KASA_DEMO\n-----END " + "OPENSSH PRIVATE KEY-----"
@@ -109,7 +114,15 @@ def run_demo():
         if not has_permission:
             print(f"      {BOLD}{GREEN}[KASA GATE DENIED]{RESET} Scope '{requested_scope}' is NOT granted.")
             print(f"      {GREEN}-> Execution blocked at Reference Monitor boundary (HTTP 403 Forbidden).{RESET}")
-        
+        else:
+            # Turkce not: Bu dal eskiden YOKTU. Kapi izin verseydi demo hicbir sey
+            # yazmayacak, sessizlik "engellendi" gibi okunacakti. Bir demo, kendi
+            # basarisizligini de gostermek zorundadir; yoksa yalniz iyi haberi
+            # gosteren bir vitrin olur.
+            print(f"      {BOLD}{RED}[KASA GATE ALLOWED — BEKLENMEYEN]{RESET} Scope '{requested_scope}' izin aldi.")
+            print(f"      {RED}-> Demo'nun gostermesi gereken engelleme GERCEKLESMEDI. Bu bir kusurdur.{RESET}")
+            demo_failed = True
+
         time.sleep(0.5)
 
         # 2. MEMORY WRITE ADMISSION CONTROL (Quarantine Check)
@@ -130,6 +143,19 @@ def run_demo():
             quarantine_result = tools.profile_write("user.security.rule", poison_payload, provenance=[101])
             print(f"      {GREEN}-> Write redirected to QUARANTINE vault (Live profile unaffected).{RESET}")
             print(f"      {GREEN}-> Status: {quarantine_result.get('status')}{RESET}")
+            # Turkce not: Karantina "sebep buldum" demekle bitmez; yazmanin
+            # GERCEKTEN karantinaya dustugu de dogrulanmali.
+            if quarantine_result.get("status") != "quarantined":
+                print(f"      {BOLD}{RED}[BEKLENMEYEN]{RESET} Karantina sebebi bulundu ama yazma "
+                      f"karantinaya dusmedi (status={quarantine_result.get('status')}).")
+                demo_failed = True
+        else:
+            # Turkce not: Bu dal da YOKTU. Desen yakalanmazsa demo sessizce
+            # 2. adimi atliyordu ve ozet tablosu yine "QUARANTINED" yaziyordu.
+            print(f"      {BOLD}{RED}[BEKLENMEYEN]{RESET} Enjeksiyon deseni yakalanmadi; "
+                  f"karantina TETIKLENMEDI.")
+            print(f"      {RED}-> Zararli deger canli profile yazilabilirdi. Bu bir kusurdur.{RESET}")
+            demo_failed = True
 
         time.sleep(0.5)
 
@@ -147,7 +173,30 @@ def run_demo():
         print(f"      {CYAN}Audit Record ID   :{RESET} {latest_audit.get('id', 'N/A')}")
         print(f"      {CYAN}Agent Identity    :{RESET} {latest_audit.get('agent_id', 'N/A')}")
         print(f"      {CYAN}Action Logged     :{RESET} {latest_audit.get('action', 'N/A')}")
-        print(f"      {CYAN}Ed25519 Signature :{RESET} VALID")
+
+        # Turkce not: Bu satir eskiden SABIT metindi -- hicbir dogrulama yapmadan
+        # "VALID" basiyordu. Bir guvenlik demosunun ekrana bastigi kriptografik
+        # hukum, o hukmu URETEN cagriyla ayni kosuda olmali; yoksa demo, kendi
+        # projesinin elestirdigi seyi yapar (olculmemis bir sonucu ilan etmek).
+        # Artik imza, bagimsiz dogrulayiciyla (public key uzerinden) sinaniyor.
+        from src.vault.audit import AuditChain
+
+        sig_row = conn.execute(
+            "SELECT entry_hash, signature FROM audit WHERE id = ? LIMIT 1",
+            (latest_audit.get("id"),),
+        ).fetchone()
+
+        if sig_row is None or not sig_row["signature"]:
+            sig_line = f"{YELLOW}NOT SIGNED{RESET} (legacy/unsigned row — nothing to verify)"
+        else:
+            sig_ok = AuditChain.verify_entry_signature(
+                sig_row["entry_hash"], sig_row["signature"], vault.audit_public_key_hex()
+            )
+            sig_line = (f"{GREEN}VERIFIED{RESET}" if sig_ok else f"{RED}INVALID{RESET}") + \
+                       " (checked against the exported public key, not asserted)"
+            if not sig_ok:
+                demo_failed = True
+        print(f"      {CYAN}Ed25519 Signature :{RESET} {sig_line}")
         print(f"      {CYAN}Merkle Chain Hash :{RESET} {entry_hash}")
         print(f"      {BOLD}{GREEN}Audit Integrity   : {is_intact} (Tamper-Proof Chain Intact){RESET}")
 
@@ -166,11 +215,21 @@ def run_demo():
         print(f"{'Audit Evidence':<25} | {RED+'NONE / BYPASSED'+RESET:<29} | {GREEN+'SIGNED & MERKLE SEALED'+RESET:<29}")
         print(f"{'Enforcement Boundary':<25} | {RED+'Model Prompt Only'+RESET:<29} | {GREEN+'External Gate (Rule)'+RESET:<29}")
         print("-" * 72)
-        print(f"\n{BOLD}{GREEN}>>> KASA 90-SECOND DEMO COMPLETED SUCCESSFULLY ({time.strftime('%Y-%m-%d %H:%M:%S')}){RESET}\n")
+        if demo_failed:
+            print(f"\n{BOLD}{RED}>>> KASA DEMO FAILED — bir savunma beklendigi gibi davranmadi "
+                  f"({time.strftime('%Y-%m-%d %H:%M:%S')}){RESET}")
+            print(f"{RED}    Yukaridaki BEKLENMEYEN satirlarina bakin. Bu bir kusurdur, "
+                  f"sunum hatasi degil.{RESET}\n")
+        else:
+            print(f"\n{BOLD}{GREEN}>>> KASA 90-SECOND DEMO COMPLETED SUCCESSFULLY "
+                  f"({time.strftime('%Y-%m-%d %H:%M:%S')}){RESET}\n")
 
     finally:
         shutil.rmtree(demo_dir, ignore_errors=True)
 
+    return 1 if demo_failed else 0
+
 
 if __name__ == "__main__":
-    run_demo()
+    import sys
+    sys.exit(run_demo())
