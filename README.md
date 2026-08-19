@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Status: research preview](https://img.shields.io/badge/status-research%20preview-orange.svg)](#-v01--research-preview--security-architecture-demo)
-[![Tests](https://img.shields.io/badge/tests-367%20passed%2C%201%20xfail-brightgreen.svg)](docs/REPRODUCE.md)
+[![Tests](https://img.shields.io/badge/tests-384%20passed%2C%201%20xfail-brightgreen.svg)](docs/REPRODUCE.md)
 [![Open findings](https://img.shields.io/badge/open%20findings-4-red.svg)](SECURITY.md)
 
 A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
@@ -25,7 +25,7 @@ A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
 > | Limits tool authority in ordinary code | deterministic broker; the model is never the boundary |
 > | Keeps a hash-chained audit ledger | tamper and deletion detection both measured PASS |
 > | Binds agent identity to the token | 7/7 live controls against a real server, positive **and** negative — `_orch/redteam/fimp_live_verify.py` |
-> | 367 tests pass | 2026-08-19 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers |
+> | 384 tests pass | 2026-08-19 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers |
 >
 > **What is NOT claimed** — these are open, written down, and some are measured failures:
 > full at-rest encryption, egress control, and independent security audit. A network caller can
@@ -212,6 +212,24 @@ target does not expose the endpoint, every check is `SKIP` and **no score is pri
 tool that scores an unreachable target invites the reader to mistake silence for safety. Exit code
 `2` means "nothing measured"; CI must not read it as green. The two-way tests behind these claims are
 in [`tests/test_scanner_cli.py`](tests/test_scanner_cli.py).
+
+**Run the positive control.** Without `--token` the scanner only ever sends attack-shaped requests,
+and a server that refuses **everything** — including all legitimate use — passes every one of them.
+Measured 2026-08-19: a server answering HTTP 403 to every request scored 100%. With a token the
+`POSITIVE-CONTROL` check sends one request that is *supposed* to succeed and fails the scan if it
+does not; without one, the warning sits on the score line rather than in a footnote.
+
+**Not tied to KASA.** The endpoint path, tool names and body field names come from a JSON profile,
+not from the source. Point it at your own server with `--profile`, see exactly what will be sent
+with `--print-profile`, and narrow the run with `--only` / `--skip-checks` — excluded checks stay in
+the report as `SKIP` with the reason written out, never silently dropped. Fields, examples and the
+transport limits it cannot cross are in
+[`tools/scanner/profiles/README.md`](tools/scanner/profiles/README.md).
+
+```powershell
+python -m tools.scanner.cli --list-checks
+python -m tools.scanner.cli --url http://127.0.0.1:9000 --profile my_server.json --token $TOKEN
+```
 
 ```powershell
 # Scan your local agent or MCP server

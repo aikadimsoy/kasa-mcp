@@ -22,6 +22,15 @@ Kullanim:
     python -m tools.scanner.cli --url http://127.0.0.1:8000
     python -m tools.scanner.cli --url http://127.0.0.1:8000 --output-md report.md
     python -m tools.scanner.cli --self-test   # yerel KASA kurulumunun kendi kalkanlari
+    python -m tools.scanner.cli --list-checks
+    python -m tools.scanner.cli --url http://127.0.0.1:9000 --profile my_server.json
+    python -m tools.scanner.cli --url ... --only AUTHZ-NO-TOKEN,POSITIVE-CONTROL
+
+KASA'YA BAGLI DEGILDIR: uc nokta yolu, arac adlari ve govde alan adlari bir JSON
+profilinden gelir (--profile). Varsayilan profil KASA'yi tarif eder; kendi
+sunucunuz icin tools/scanner/profiles/ altindaki ornekleri kopyalayip degistirin.
+KAPSAM SINIRI: bu bir HTTP+JSON gondericidir. JSON-RPC zarfi, stdio tasimasi,
+SSE ve OAuth akislari kapsam disidir; hedef oyle konusuyorsa dogru cevap SKIP'tir.
 """
 
 from __future__ import annotations
@@ -232,15 +241,69 @@ class AgentSecurityScanner:
         except Exception as e:
             return 0, {"error": str(e)}, str(e)
 
-    def run_all_checks(self, self_test: bool = False) -> List[SecurityCheckResult]:
-        """Tum denetimleri sirayla kosturur."""
+    # Turkce not: Kontrol kayit defteri. Bir kontrolu ad listesiyle degil,
+    # BURADAN secmek gerekir; boylece --list-checks ile --only/--skip her zaman
+    # ayni kumeyi gorur ve "listede olmayan dal yok gorunur" hatasi olusmaz.
+    CHECKS = (
+        ("POSITIVE-CONTROL", "_check_positive_control",
+         "Hedef mesru istegi kabul ediyor mu? (digerlerinin yorumlanabilmesi icin sart)"),
+        ("AUTHZ-NO-TOKEN", "_check_unauthenticated_access",
+         "Token'siz istek reddediliyor mu?"),
+        ("AUTHZ-C5-IMPERSONATION", "_check_c5_system_impersonation",
+         "Govdede beyan edilen ayricalikli kimlik reddediliyor mu?"),
+        ("AUTHZ-DENY-BY-DEFAULT", "_check_deny_by_default_scope",
+         "Izni olmayan ajanin cagrisi reddediliyor mu?"),
+        ("POISON-QUARANTINE", "_check_memory_poison_quarantine",
+         "Enjeksiyon yuku canli hafizaya giriyor mu? (yazma yetkili token gerekir)"),
+        ("EGRESS-DATA-LEAK", "_check_egress_and_secret_leak",
+         "Giden veri sizintisi (uzaktan olculemez; --self-test yerel kalkani sinar)"),
+    )
+
+    def run_all_checks(self, self_test: bool = False,
+                       only: Optional[List[str]] = None,
+                       skip: Optional[List[str]] = None) -> List[SecurityCheckResult]:
+        """
+        Secilen denetimleri sirayla kosturur.
+
+        Turkce not: Atlanan kontrol SESSIZCE dusmez -- her biri icin gerekcesi
+        yazili bir SKIP uretilir. Yoksa daraltilmis bir tarama, tam tarama gibi
+        okunur.
+        """
         self.results = []
-        self._check_positive_control()
-        self._check_unauthenticated_access()
-        self._check_c5_system_impersonation()
-        self._check_deny_by_default_scope()
-        self._check_memory_poison_quarantine()
-        self._check_egress_and_secret_leak(self_test=self_test)
+        only_set = {c.strip().upper() for c in (only or []) if c.strip()}
+        skip_set = {c.strip().upper() for c in (skip or []) if c.strip()}
+
+        known = {cid for cid, _, _ in self.CHECKS}
+        for name in sorted((only_set | skip_set) - known):
+            raise ValueError("Bilinmeyen kontrol: %s. Gecerli olanlar: %s"
+                             % (name, ", ".join(sorted(known))))
+
+        for cid, method, _desc in self.CHECKS:
+            if only_set and cid not in only_set:
+                self.results.append(SecurityCheckResult(
+                    cid, cid, SKIP,
+                    "OLCULEMEDI: --only ile kapsam disinda birakildi.",
+                    "Kapsama almak icin --only listesine ekleyin.",
+                    cid,
+                    "NOT MEASURED: excluded by --only.",
+                    "Add it to --only to include it.",
+                ))
+                continue
+            if cid in skip_set:
+                self.results.append(SecurityCheckResult(
+                    cid, cid, SKIP,
+                    "OLCULEMEDI: --skip-checks ile acikca atlandi.",
+                    "Atlamayi kaldirin.",
+                    cid,
+                    "NOT MEASURED: explicitly skipped with --skip-checks.",
+                    "Remove it from --skip-checks.",
+                ))
+                continue
+            fn = getattr(self, method)
+            if cid == "EGRESS-DATA-LEAK":
+                fn(self_test=self_test)
+            else:
+                fn()
         return self.results
 
     # ------------------------------------------------------------------
@@ -730,11 +793,51 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--output-md", default=None, help="Raporu Markdown olarak kaydet")
     parser.add_argument("--self-test", action="store_true",
                         help="Yerel KASA kurulumunun kendi kalkanlarini da sina (hedefi olcmez)")
+    parser.add_argument("--profile", default=None,
+                        help="Hedefin uc noktasini/alan adlarini tarif eden JSON profil dosyasi. "
+                             "Ornekler: tools/scanner/profiles/")
+    parser.add_argument("--print-profile", action="store_true",
+                        help="Kullanilan profili JSON olarak bas ve cik (ne gonderildigini gorun)")
+    parser.add_argument("--list-checks", action="store_true",
+                        help="Kontrolleri listele ve cik")
+    parser.add_argument("--only", default="",
+                        help="Yalniz bu kontrolleri kostur (virgullu). Digerleri SKIP olarak isaretlenir.")
+    parser.add_argument("--skip-checks", default="",
+                        help="Bu kontrolleri atla (virgullu). Atlananlar karnede SKIP olarak gorunur.")
 
     args = parser.parse_args(argv)
 
-    scanner = AgentSecurityScanner(base_url=args.url, token=args.token, lang=args.lang)
-    results = scanner.run_all_checks(self_test=args.self_test)
+    if args.list_checks:
+        print("Kontroller / checks:")
+        print("")
+        for cid, _m, desc in AgentSecurityScanner.CHECKS:
+            print("  %-24s %s" % (cid, desc))
+        print("")
+        print("--only / --skip-checks ile secebilirsiniz. Atlanan kontrol PASS degil SKIP olur.")
+        return 0
+
+    try:
+        profile = ScanProfile.from_file(args.profile) if args.profile else ScanProfile()
+    except (OSError, ValueError, json.JSONDecodeError) as e:
+        print("Profil okunamadi: %s" % e, file=sys.stderr)
+        return 3
+
+    if args.print_profile:
+        print(json.dumps(profile.to_dict(), indent=2, ensure_ascii=False))
+        return 0
+
+    scanner = AgentSecurityScanner(base_url=args.url, token=args.token, lang=args.lang,
+                                   profile=profile)
+    try:
+        results = scanner.run_all_checks(
+            self_test=args.self_test,
+            only=args.only.split(",") if args.only else None,
+            skip=args.skip_checks.split(",") if args.skip_checks else None,
+        )
+    except ValueError as e:
+        print("%s" % e, file=sys.stderr)
+        print("(--list-checks ile gecerli adlari gorebilirsiniz.)", file=sys.stderr)
+        return 3
 
     print(format_terminal_report(results, lang=args.lang))
 
