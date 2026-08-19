@@ -171,6 +171,25 @@ async def _host_guard(request: Request, call_next):
         )
     return await call_next(request)
 
+
+MAX_REQUEST_BODY_BYTES = 1024 * 1024  # 1 MB DoS Kalkanı
+
+
+@app.middleware("http")
+async def _dos_payload_guard(request: Request, call_next):
+    """Bellek bozulması ve ReDoS saldırılarına karşı 1 MB üzeri gövdeleri HTTP 413 ile anında keser."""
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_REQUEST_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "İstek gövdesi çok büyük; maksimum 1 MB kabul edilir."},
+                )
+        except ValueError:
+            pass
+    return await call_next(request)
+
 # Bearer token authentication için gerekli olan dependency'yi tanımlayalım
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Security

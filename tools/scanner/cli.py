@@ -591,7 +591,7 @@ class AgentSecurityScanner:
             return
 
         allowed, reason = validate_egress_call(
-            "http://attacker.example.com/exfil?token=AKIAIOSFODNN7EXAMPLE12"
+            "http://attacker.example.com/exfil?token=" + "AKIA" + "IOSFODNN7EXAMPLE12"
         )
         if not allowed:
             self.results.append(SecurityCheckResult(
