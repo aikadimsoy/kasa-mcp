@@ -46,16 +46,25 @@ jobs:
           python-version: "3.12"
 
       # TR-NOT: requirements.txt pytest ICERMEZ (uretim bagimliligi degildir).
-      # Onceki surum bunu varsayip "No module named pytest" ile dustu; test
-      # kosucusu burada acikca kurulur.
+      # Onceki surum bunu varsayip "No module named pytest" ile dustu.
+      # Baska hicbir sey kurulmuyor -- asagidaki not sebebini soyluyor.
       - name: Install test runner only
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest
 
+      # TR-NOT (--noconftest neden): tests/conftest.py src.vault.database'i, o da
+      # cryptography'yi ice aktarir; PyQt5 ve digerleri de requirements.txt'te.
+      # Tarayicinin kendisi ve testleri YALNIZ stdlib kullanir, o yuzden bu is
+      # akisi o agir bagimliliklarin hicbirine ihtiyac duymaz. conftest devre disi
+      # birakilir ve depo koku PYTHONPATH ile verilir.
+      # Bu bir kapsam DARALTMASIDIR, gizleme degil: vault/kripto/sunucu katmanlari
+      # Windows'ta tests.yml altinda tam takimla kosar.
       - name: Tarayicinin iki yonlu testi
+        env:
+          PYTHONPATH: .
         run: |
-          python -m pytest tests/test_scanner_cli.py -q
+          python -m pytest --noconftest tests/test_scanner_cli.py -q
 
       # Kanit uretimi: gercekten guvensiz bir hedefte alet ATESLIYOR mu?
       # Bu adim CI ozetine bir FAIL karnesi basar; yesil bir karne degil.
