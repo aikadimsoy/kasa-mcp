@@ -19,8 +19,13 @@ that is a finding and we would like to hear about it.
 git clone https://github.com/aikadimsoy/kasa-mcp.git
 cd kasa-mcp
 py -3.12 -m venv .venv ; .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 ```
+
+`requirements-dev.txt` is what makes the `pytest` rows below runnable. It is separate because
+pytest is not a production dependency — but installing only `requirements.txt` used to leave this
+page's own commands failing with `No module named pytest`, which is the least acceptable defect a
+"reproduce it yourself" page can have. Measured and fixed 2026-08-19.
 
 Windows only — the vault key is protected with DPAPI and on other platforms that layer is a no-op.
 Ollama is needed for **two** rows only (they say so); everything else runs without a model.
@@ -97,12 +102,17 @@ of lie have now happened in this project.
 | **Distiller-model attack rates** — 20/20 compliance across four configurations, five runs each | `RAN-LIVE` | `python _orch/redteam/indirect_variant_probe.py` **(needs Ollama)** | Any claim about other models, quantisations or phrasings. Small samples, named models, `docs/MODEL_BASELINE_REPORT.md` |
 | **Three caveats measured before citing 20/20** — pre-existing legitimate memory does not lower it (5/5 → 5/5); paraphrase still lands (adoption, not copying); benign writes still pass (5/5, an operating point exists) | `RAN-LIVE` | `_orch/archive/measurements.json` → `B-STAGE-CAVEATS` **(needs Ollama)** | One model, one seed size, one semantic grader word. A stronger design would use a held-out marker and a paraphrase panel |
 | **Comparison against the official MCP memory server**, same instrument on both | `RAN-LIVE` | `_orch/archive/measurements.json` → `RIVAL-COMPARISON` | A ranking. Different projects, different goals |
+| **The scanner passed insecure servers** — a server answering every request with HTTP 404, with no authentication, no authorization, no quarantine and no egress control, scored **60% with 3/5 PASS**. Two causes: 404 was counted as `PASS`, and the egress check called our own local function without sending the target a single request | `RAN-LIVE` | `pytest tests/test_scanner_cli.py -q` — `test_404_target_yields_no_pass_at_all` is the regression test for exactly this | That the scanner is now correct in general. It shows two specific false-PASS paths are closed and held closed. The scanner probes **four** things; it is not an audit |
+| **The scanner discriminates** — it fires `FAIL` on a server that obeys every request, and stays `SKIP` on a target it cannot measure. Both directions, real fixture servers, not mocks | `RAN-LIVE` | `pytest tests/test_scanner_cli.py -q` (14 tests) | That `SKIP` targets are safe. `SKIP` means *not measured*; the tool prints no score at all in that case and exits `2` |
+| **The scanner sends no hidden requests** — the fixture counts inbound requests; exactly four checks touch the target and the egress check touches it zero times, as it states on its own line | `RAN-LIVE` | `pytest tests/test_scanner_cli.py::test_scanner_sends_no_extra_requests_for_egress` | Anything about the target's real egress behaviour. That remains unmeasured by this tool, by design and by admission |
 
 ### The whole suite
 
 | Command | What it gives |
 |---|---|
-| `pytest -q` | 323 passed, 1 xfailed (2026-08-05) |
+| `pytest -q` | 367 passed, 1 xfailed (2026-08-19, py3.14.5). The xfail is an expected failure, not a pass — this is not "100% passing". Earlier runs of earlier trees: 323 (2026-08-05), 357 (before the scanner's three mock tests became fourteen fixture-driven ones) |
+| `pytest tests/test_scanner_cli.py -q` | 14 passed (2026-08-19). Runs without `requirements.txt` if you add `--noconftest` and `PYTHONPATH=.` — the scanner is stdlib-only, which is why CI can run it on Linux while the full suite stays on Windows |
+| `python demo_attack_defense.py` | Exit `0` when every defence behaves as claimed, `1` when one does not. It builds a throwaway vault in a temp directory and uses a **mock** SSH key — it never reads your real `~/.ssh` |
 | `python tools/security_bench/run.py` | 21 checks — **21 PASS / 0 FAIL / 0 WARN** (commit `5a703cd`). **Read `docs/SECURITY_BENCH_LIMITS.md` before quoting that.** The word it stamps is *release candidate*; that is the bench's word, not the project's status, and a fully green suite is the most misleading state this project has been in |
 
 ---
@@ -115,7 +125,12 @@ Stated because an index of evidence is also an index of its own edges.
   is the gap we would most like filled.
 - **No adversary with the vault file.** Same-OS attackers are out of scope by design
   (`docs/THREAT_MODEL.md`, adversary class A). Say so out loud when citing anything above.
-- **No egress observation.** What leaves the machine is neither controlled nor measured.
+- **No egress observation.** An egress guard now exists (`src/agent/egress_guard.py`, unit-tested)
+  and refuses unlisted domains and credential-shaped strings when it is called. What is still
+  missing is the measurement that matters: nothing here observes what actually leaves the machine,
+  and no test drives a full agent path end-to-end through that guard. A guard with unit tests is
+  not an observed network boundary — treat egress as **unmeasured**, not solved. The scanner says
+  the same thing on its own `EGRESS` line rather than scoring it.
 - **No multi-host, multi-user or long-running measurement.** Single machine, loopback, short runs.
 - **No exploit for the browser bridge defect** — only its code structure and a fail-closed gate.
 - **F-POISON has no structural fix.** The boundary is located precisely; that is not the same as
