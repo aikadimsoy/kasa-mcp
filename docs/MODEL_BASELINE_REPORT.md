@@ -126,7 +126,7 @@ The overall score is an **unweighted mean** across 19 checks in six categories, 
 
 **Complicates the same argument:** A8 shows the broker's boundary is *authority*, and authority is not the whole problem. A permitted write of a fabricated fact passes every check KASA currently has. Deterministic mediation is necessary here and demonstrably not sufficient.
 
-**Does not support:** any claim about these models in other harnesses, quantisations, or phrasings; any rate beyond these small samples; or any claim that KASA's broker stops these attacks in production. That last is a separate measurement with its own open findings — see [`SECURITY_BENCHMARK.md`](SECURITY_BENCHMARK.md), where KASA's current verdict is *not release-ready*.
+**Does not support:** any claim about these models in other harnesses, quantisations, or phrasings; any rate beyond these small samples; or any claim that KASA's broker stops these attacks in production. That last is a separate measurement with its own open findings — see [`SECURITY_BENCHMARK.md`](SECURITY_BENCHMARK.md). That suite currently reads 20 PASS / 0 FAIL / 1 WARN and stamps the word *release candidate*, which is precisely the trap this section warns about: it contains **no check at all** for the attack measured in this report. A clean suite and an open A8 are not in contradiction; they are measuring different things ([`SECURITY_BENCH_LIMITS.md`](SECURITY_BENCH_LIMITS.md)).
 
 **Also worth stating:** this bench is written by the project it measures, and there has been no independent audit.
 

@@ -1,0 +1,62 @@
+{
+  "measured_at": "2026-08-05T13:58:02",
+  "level": "RAN-LIVE",
+  "transport_errors": [],
+  "results": [
+    {
+      "id": "P1",
+      "why": "bagli token KENDISI olarak yaziyor",
+      "expected": 200,
+      "got": 200,
+      "pass": true,
+      "body": "{\"result\":{\"status\":\"success\",\"event_id\":1,\"deduplicated\":false}}"
+    },
+    {
+      "id": "P2",
+      "why": "beyan yok; kimligi token soyluyor",
+      "expected": 200,
+      "got": 200,
+      "pass": true,
+      "body": "{\"result\":{\"status\":\"success\",\"event_id\":2,\"deduplicated\":false}}"
+    },
+    {
+      "id": "N1",
+      "why": "sahip token'i 'browser' kimligine burunuyor (eskiden 200)",
+      "expected": 403,
+      "got": 403,
+      "pass": true,
+      "body": "{\"detail\":\"agent_id token'a bağlı kimlikle uyuşmuyor.\"}"
+    },
+    {
+      "id": "N2",
+      "why": "bagli token BASKA kimlik beyan ediyor",
+      "expected": 403,
+      "got": 403,
+      "pass": true,
+      "body": "{\"detail\":\"agent_id token'a bağlı kimlikle uyuşmuyor.\"}"
+    },
+    {
+      "id": "N3",
+      "why": "taninmayan token (kimlik degil, KIMLIK DOGRULAMA hatasi)",
+      "expected": 401,
+      "got": 401,
+      "pass": true,
+      "body": "{\"detail\":\"Geçersiz token.\"}"
+    },
+    {
+      "id": "N4",
+      "why": "iptal edilmis token artik cozulmuyor",
+      "expected": 401,
+      "got": 401,
+      "pass": true,
+      "body": "{\"detail\":\"Geçersiz token.\"}"
+    },
+    {
+      "id": "R1",
+      "why": "donen beyan artik taze kova uretmiyor",
+      "expected": ">0 adet 429",
+      "got": "240 adet 429 / 60 adet 200",
+      "pass": true
+    }
+  ]
+}

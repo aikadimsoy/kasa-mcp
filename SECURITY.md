@@ -230,34 +230,92 @@ These are already written down. A report that adds a **new exploitation path**, 
 impact**, or a **working bypass of a stated mitigation** for any of them is very welcome —
 a report that restates them is a duplicate.
 
-**1. `agent_id` is client-asserted (finding F-IMP).**
-The agent identity arrives in the request body and is not bound to the token. Only
-`"system"` is reserved (`src/mcp_server/server.py:63`), while `browser` is auto-granted
-`events:write` at startup (`src/mcp_server/server.py:81-84`). Measured consequence: a
-holder of a valid token can claim `agent_id="browser"` and inherit that write permission —
-`event_ingest` returned HTTP 200 on an isolated server. Other targets (profile read,
-`forget`, audit read) held at 403/404 under sustained attempts. Details and evidence:
+**1. `agent_id` was client-asserted (finding F-IMP) — CLOSED 2026-08-05.**
+The agent identity used to arrive in the request body and was never bound to the token. Only
+`"system"` was reserved, while `browser` is auto-granted `events:write` at startup
+(`src/mcp_server/server.py:81-84`). Measured consequence: a holder of a valid token could claim
+`agent_id="browser"` and inherit that write permission — `event_ingest` returned HTTP 200 on an
+isolated server. Details of the original finding:
 [`docs/MCP_CANLI_TEST_EYLEM_PLANI_2026-08-02.md`](docs/MCP_CANLI_TEST_EYLEM_PLANI_2026-08-02.md)
-§F-IMP; residual entry in `docs/THREAT_MODEL.md`.
-The planned fix is identity binding (resolve `agent_id` from the token, reject mismatches);
-it has not been installed. A feasibility spike for OS-level process identity over a named
-pipe succeeded (`_orch/redteam/named_pipe_identity_spike.py`), but the v1-or-v2 decision
-is the owner's and is open.
+§F-IMP.
 
-**2. Rate limiting can be bypassed by rotating `agent_id` (same root cause).**
-Buckets are keyed on the asserted identity
-(`src/mcp_server/server.py:152`, `src/mcp_server/server.py:206`). Measured: 150 requests
-with a fixed identity produced 90 × HTTP 429; 150 requests with a rotating identity
-produced **zero**, and 300 rotating requests wrote 300 permanent rows to the audit chain
-(`docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md` §4.1). The related unbounded-bucket-growth
-issue *was* closed and has a test (`tests/test_ratelimit_eviction.py`); the bypass itself
-has not been.
-Consequence worth stating plainly: the audit chain shows that *a record was not altered*.
-Until identity is bound, it does **not** establish *which agent produced it*.
+Identity is now resolved from the token (`resolve_agent`, `src/mcp_server/server.py:240`) against
+the `agent_tokens` table; the body claim is only a claim, and a mismatch is refused with 403
+(`_bound_identity`, `src/mcp_server/server.py:309`). The legacy shared token is not a hole — it is
+pinned to one fixed identity rather than being able to become any identity.
 
-**3. `kasa.db` is not fully encrypted at rest.**
-Three columns are encrypted with AES-256-GCM (per-cell nonce, AAD-bound):
-`events.content`, `profile.value`, `audit.details`. Everything else — timestamps,
+**Verified live, and deliberately not only in the test suite.** `tests/test_identity_binding.py`
+passes 15/15, but this project has a receipt for why that is not sufficient on its own: an earlier
+version of that suite went green while the *positive* side of the gate was completely broken —
+against real uvicorn every bound token got HTTP 401, and the test only asserted that a refusal
+message was absent, which 401 also satisfies. So the fix was re-measured against a **real** server:
+7/7, `_orch/redteam/fimp_live_verify.py`, raw result in `_orch/redteam/fimp_live_result.json`.
+
+| Control | Expected | Got |
+|---|---|---|
+| owner token claiming `agent_id="browser"` — *the measured attack, previously 200* | 403 | **403** |
+| bound token claiming a different identity | 403 | **403** |
+| unknown token (auth failure must stay distinguishable from identity failure) | 401 | **401** |
+| revoked bound token | 401 | **401** |
+| **bound token acting as itself, completing a real write** *(positive control)* | 200 | **200** |
+| **bound token with no body claim at all** *(positive control)* | 200 | **200** |
+
+**Limits, stated rather than implied.** Identity is bound to a *token*, so it is exactly as strong
+as token secrecy and issuance: a same-OS attacker who can read the vault file can mint one, and
+that adversary class is out of scope by design (`docs/THREAT_MODEL.md`). What is closed is that a
+**network caller** can forge attribution. What is *not* closed is truth — a correctly attributed
+write can still carry a fabricated claim, which is finding F-POISON below. OS-level *process*
+identity over a named pipe remains a successful feasibility spike
+(`_orch/redteam/named_pipe_identity_spike.py`), not a build.
+
+**2. Rate limiting bypass by rotating `agent_id` (same root cause) — CLOSED with it.**
+Buckets used to be keyed on the *asserted* identity, so rotating it produced a fresh bucket every
+time. Measured before: 150 requests with a fixed identity produced 90 × HTTP 429; 150 requests with
+a rotating identity produced **zero**, and 300 rotating requests wrote 300 permanent rows to the
+audit chain (`docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md` §4.1). The bucket is now keyed on the
+**bound** identity, which cannot be fabricated. Measured after, live, same script: 300 requests with
+a rotating claimed id → 60 × 200 and **240 × HTTP 429**, exactly bucket capacity. The related
+unbounded-bucket-growth issue was closed separately (`tests/test_ratelimit_eviction.py`).
+Consequence worth restating: the audit chain shows that *a record was not altered*. It now also
+establishes *which token produced it* — which is a claim about the caller, not about the content.
+
+**3. `kasa.db` is not fully encrypted at rest — and the exception is worse than the rule
+(finding F-DISTILL-PLAINTEXT, measured 2026-08-05, OPEN).**
+
+Before the scoping below, one correction to a claim this file used to make without qualification.
+Three columns are *supposed* to be encrypted, and they are — **on the brokered write path**. They
+are not on the **distiller** path. The same secret, written two ways into an isolated vault:
+
+| Path | `profile.value` on disk |
+|---|---|
+| `VaultTools.profile_write()` | `K1:+4xIpuvtvr+nlTCo…` — encrypted |
+| `DistillEngine.run_batch()` | `{"text": "hunter2", "confidence": 0.95}` — **plaintext** |
+
+Reconnecting the vault does not encrypt it afterwards, and it survives `VACUUM`, so it is a live
+column and not deleted-page residue. Reproduce: `_orch/redteam/distill_crypto_bypass.py` (positive
+control included — without the brokered write showing ciphertext, "the file contains a string"
+would prove nothing).
+
+Encryption is not broken; **the scope of the claim was wider than the code**. The path that misses
+it is the one that consumes untrusted page text, and it is the same path that already bypasses the
+permission broker (`_orch/redteam/door_inventory.py` → `not_a_network_route`). So the distiller now
+has **two** measured bypasses of controls the brokered path applies: authorization and at-rest
+encryption.
+
+How it surfaced is worth recording, because nobody was looking: `tests/test_distill_injection.py`
+failed once in a full-suite run and passed in isolation. Chasing that flake led here. The injection
+test still passes — its assertions are about the key *name*, and the leak is in the *value*.
+
+**Not fixed.** Encrypting the distiller write is small in principle; existing plaintext rows would
+need a migration, which is an owner decision, and this file will not describe it as closed until
+that is done and measured.
+
+Reach, stated plainly: reading the vault file is adversary class A4 and out of scope by design.
+What this finding changes is that the plaintext content is **attacker-authored and arrives
+remotely** — a visited page decides what gets written unencrypted.
+
+The original scoping still holds for everything else. Three columns are encrypted with AES-256-GCM
+(per-cell nonce, AAD-bound): `events.content`, `profile.value`, `audit.details`. Everything else — timestamps,
 `profile.key`, `agent_id`, action names, TTL fields, hash-chain columns, the whole
 `permissions` table — is plaintext, because queries, indexes, TTL scans and the hash chain
 depend on it. The file header is `SQLite format 3`; the file opens, the content columns do
@@ -287,10 +345,29 @@ call DPAPI anyway, so it adds little exposure
 (`docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md` §4.3). If you can show it *does* add
 exposure, that is a report worth sending.
 
-**6. Static-analysis backlog.** 13 Bandit MEDIUM findings were untriaged as of the
-2026-08-02 benchmark run, and the secret scan reported 16 unreviewed hits.
-`docs/SECURITY_BENCHMARK.md` records the run as **not release-ready**: 21 checks,
-18 PASS / 1 FAIL / 2 WARN.
+**6. Static-analysis backlog — triaged 2026-08-05, and read the residuals rather than the count.**
+The 13 Bandit MEDIUM findings were reviewed one at a time against the source; every verdict, with
+its file:line evidence, is in `tools/security_bench/bandit_triage.json`. Nine are false positives:
+four "SQL injection" sites interpolate only `?` placeholders with all values bound, one flags the
+string `"0.0.0.0"` inside a *comparison* in a WebView2 registry check, and four `urlopen` calls use
+hardcoded literal URLs — which matters most at `browser_window.py:1100`, because that request
+carries the bearer token and a hardcoded URL is what stops it being redirected. **Five are accepted
+residuals, not clean results:** `urlopen` calls whose URL comes from config or env
+(`OLLAMA_BASE`, `OLLAMA_URL`, `KASA_SERVER_URL`). Anyone who can set those already owns the process
+environment — adversary class A4, out of scope by design. That is a statement of scope, not of
+safety.
+
+"Parameterised, therefore safe" is a *claim*, and claims need measurements here, so the four SQL
+sites have a negative control: `tests/test_bandit_triage.py` drives the real `forget()` path with
+four SQL payloads and asserts the tables survive and unrelated rows are untouched — alongside a
+positive control proving `forget()` actually deletes, without which the negative tests would pass
+against a no-op.
+
+The suite now reads 21 checks, **21 PASS / 0 FAIL / 0 WARN** (`docs/SECURITY_BENCHMARK.md`,
+commit `5a703cd`). **A fully green suite is the most misleading state this project has been in**,
+and it is worth saying so on the same line as the number: finding F-POISON is open, the suite
+contains no check for it, and triage moved findings from *unreviewed* to *reasoned about* — not
+from *present* to *absent*.
 
 **7. Injected page content can plant a false durable memory (finding F-POISON).**
 The broker mediates *authority*, not *truth*. `browser` is auto-granted `events:write` at
@@ -304,12 +381,171 @@ emitting the attacker's key with `confidence: 1.0`, in one case alongside a genu
 the fabricated one is less conspicuous. Evidence:
 `_orch/redteam/indirect_variant_result.json`; discussion in
 [`docs/MODEL_BASELINE_REPORT.md`](docs/MODEL_BASELINE_REPORT.md).
-Honest limit: this measures the *distiller model*, not an end-to-end write through the live
-MCP server — the ingest path was not driven end-to-end and no vault was poisoned in the
-test. The gap is architectural rather than a permission bug, which is why it is listed here
-rather than treated as a fixable defect: no permission model distinguishes a true fact from
-a false one. Provenance and content-origin marking are the candidate directions and neither
-is installed.
+**Confirmed end-to-end on 2026-08-05, and the earlier honest limit is now closed.** That
+limit read: *"this measures the distiller model, not an end-to-end write through the live MCP
+server."* It has since been driven end to end against an isolated vault, ingesting through the
+real `/v1/execute_tool` path and reading back through the broker. Two cases, both with
+`kasa-agent:8b` — the only configuration carrying a hardening system prompt, i.e. the condition
+most favourable to the defence:
+
+- **Naive payload (the original A8 key, outside the allow-listed namespaces): blocked.** The
+  model emitted it with `confidence: 1.0`, and the deterministic namespace gate rejected it
+  (`rejected non-allowlisted key`). The gate works, and this must be said as plainly as the
+  failure below.
+- **Namespace-aware payload: succeeded.** Planting `user.profile.occupation` = *"verified
+  diamond dealer"* passed **every** deterministic gate — namespace allow-list, credential
+  denylist, provenance size and type checks, provenance existence validation, redaction, and
+  the structural quarantine pattern match — and was committed to the live profile. The engine
+  reported `facts_committed: 2, facts_quarantined: 0, errors: []`: a clean success while
+  writing a falsehood. A genuine fact was committed alongside it, which makes the poisoned row
+  *less* conspicuous on review. `profile_read` through the broker returns it.
+
+The precise boundary is therefore: **the deterministic gates stop an attacker who does not
+know our namespace rules, and do not stop one who reads them** — and the allow-list is public,
+in this repository.
+
+**It is a rate, not a yes/no, and the first published version of this artefact got that wrong.**
+The gate stack is deterministic; the distiller is a language model and is not. Re-measured
+2026-08-05 with `kasa-agent:8b` over two batches of five: the namespace-aware key landed **4/5 and
+3/5 (7/10)**, the naive control **0/5 and 0/5**. The reproduction script originally ran each case
+once, so roughly one run in three printed `[UNEXPECTED]` for the passing case — which reads to a
+stranger as *the finding is false*. That is the wrong failure mode for an artefact whose purpose is
+independent verification, and it fired for real: the first re-run after two branches were merged
+showed the payload blocked, and it took a diagnostic pass to establish that the defence had not
+changed and the model simply had not complied that time. The script now runs N times, reports the
+rate, and tells the reader how to distinguish "the model did not comply" from "the pipeline is
+broken" — if other keys landed the pipeline ran; if the profile is empty on every run, neither
+result means anything.
+
+One consequence deserves stating on its own, because it generalises past this project.
+Provenance validation here confirms that the cited event **exists** and is undistilled; it does
+not confirm that the event **supports** the claim. The poisoned fact cites event 3, a real
+event whose actual content is a coffee grinder review. **The derivation chain is fully
+verifiable and the content is false.** Signed receipts, content hashing and verifiable lineage
+are all compatible with a fabrication — they establish where a claim came from, not whether it
+is true.
+
+The gap remains architectural rather than a permission bug: no permission model distinguishes
+a true fact from a false one. Content-origin marking bound *before* inference and enforced at
+write time is the candidate direction, and it is **not installed**. Evidence:
+`_orch/archive/measurements.json` → `F-POISON-E2E`.
+
+**Reframed 2026-08-05 — a defence against this payload exists, and this project is not running
+it.** Everything above was measured on the model the product actually resolves to. It was
+labelled as the hardened build, which was wrong, and correcting that label left an unmeasured
+claim behind. So it was measured. Same payload, same run counts, one variable — the model:
+
+| Model | Poison landed | Naive control | **Utility** |
+|---|---|---|---|
+| bare `hermes3:8b` — *what `resolve_model()` returns* | **23/25** | 0/25 | 8/8 |
+| `kasa-agent:8b` — *hermes3 + a hardening system prompt* | **0/25** | 0/25 | 8/8 |
+
+The utility column is the one that makes this readable. Without it, "the hardened model committed
+nothing" and "the hardened model refused" produce the same screen — and that confusion caused three
+wrong verdicts in this repository on a single day. Both models emit a legitimate fact from a benign
+event 8/8, so the zero is a **refusal**, not silence.
+
+What this changes: F-POISON is **not** a class with no available defence. What is open is that
+`src/config.py` and `kasa.toml` name `qwen2.5:7b` — the model that *failed* the A1 injection probe
+in three independent runs — and `resolve_model()` returns bare `hermes3:8b`. **Neither points at
+the hardened build.** Tracked as `MODEL-CONFIG-GAP`, and it is now the more actionable finding.
+
+**Do not read this as "the hardened model resists prompt injection"** — and the reason is sharper
+than a missing style. An earlier measurement
+(`docs/LOCAL_MODEL_WEAKNESS_MAP_TR_2026-08-04.md`, 15 models × 6 probes × 3 runs) reports:
+
+| Style | `kasa-agent:8b` | `hermes3:8b` |
+|---|---|---|
+| P2a crude override | **3/3 resisted** — the only one of 15 | 0/3 |
+| P2b subtle, disguised as a system note | **0/3** | 0/3 |
+
+*(An earlier revision of this section claimed hermes3 and every other model fail crude override
+"hermes3 included". That is right about hermes3 and **wrong about `kasa-agent:8b`**, which was the
+sole full resister. Corrected on re-reading the source.)*
+
+**But that document does not call the result a defence — it calls it an artefact.** Its own
+finding: `kasa-agent:8b` did not cleanly refuse the injection; it **over-fits to the KASA domain**
+and emits domain-internal filler ("how many events are in the vault?") instead of following any
+instruction. The measured cost is in the same report: on a plain factual task it dropped 3/3 → 2/3,
+once declining to name a capital city because "there is no city information in KASA".
+
+That exposed a gap in the A/B above. Its utility control used a benign, **domain-plausible** text
+about coffee and the model produced a coffee preference — which does not separate *"read the input
+and distilled it"* from *"emitted something domain-shaped"*. A model that ignores every instruction
+scores 0 on poison and still looks useful on that control.
+
+**So a fidelity control was added and run: the over-fit explanation does not hold here.** The benign
+text carries a held-out marker the model can only emit by actually reading the event. Result, n=6:
+
+| | poison | naive | utility | **marker reproduced** |
+|---|---|---|---|---|
+| bare `hermes3:8b` | 4/6 | 0/6 | 6/6 | **6/6** |
+| `kasa-agent:8b` | **0/6** | 0/6 | 6/6 | **6/6** |
+
+`kasa-agent:8b` wrote `user.preferences.favorite_roaster = "Kavaklidere Kahve"` on every run. It
+reads the input faithfully **and** refuses the injected directive. Across all batches its poison
+count is **0/31**. The zero is a refusal.
+
+The over-fit finding is not thereby refuted in general — it was measured on an *out-of-domain*
+factual question (naming a capital city), and this control is *in-domain*. That distinction happens
+to favour the fix: distillation is in-domain by construction, so the measured regression sits
+outside the job this model does here.
+
+**What still blocks the obvious fix.** The subtle, system-note-disguised style (P2b) is failed
+**0/3 by both models**, so changing the configured model closes one style and not the class. It is
+now a supported improvement rather than an unsupported one — but it must be published as *"one
+measured style closed"*, never as *"F-POISON mitigated"*. Reproduce:
+`_orch/redteam/hardening_prompt_ab.py`.
+
+**8. The MCP adapter runs as the owner (finding F-MCP-OWNER-BEARER).**
+`src/mcp_adapter/proxy.py` resolves the bearer **only** from `kasa.toml`. There is no
+environment override for the token — `KASA_SERVER_URL` and `KASA_MCP_AGENT_ID` exist, but no
+bearer override — so the adapter can only ever present the **owner's** credential, and identity
+always resolves to `LEGACY_AGENT_ID`. Two consequences, both measured live on 2026-08-05
+against an isolated vault. First, `KASA_MCP_AGENT_ID` is **effectively inert**: any value other
+than the legacy identity returns `403 "agent_id token'a bağlı kimlikle uyuşmuyor."` Second, and
+more seriously, `require_owner()` (`src/mcp_server/server.py:297`) compares the presented
+credential against that same `_BEARER_TOKEN`, so the secret held by the adapter process is
+sufficient for the **owner-only** surfaces (`/v1/dashboard/*`, `/v1/agent/*`, `/v1/terms/*`).
+The adapter's own docstring states it *"holds NO privileged path into the vault"* — true of its
+**code paths**, false of its **credential**.
+
+**Fixed and verified live on 2026-08-05.** No new mechanism was invented: `agent_tokens` already
+existed and `tools/grant_agent_scope.py issue-token` already minted bound tokens; the only thing
+missing was the adapter's ability to *present* one. `KASA_MCP_TOKEN` now takes precedence over
+the config bearer, and falling back to the owner credential warns on stderr. Four controls, two
+positive and two negative, against an isolated vault:
+
+| Check | Result |
+|---|---|
+| owner bearer → `/v1/dashboard/stats` | **200** — the owner-only endpoint really is reachable |
+| **agent token → `/v1/dashboard/stats`** | **403** — *this is the fix* |
+| agent token → granted tool (`profile_read`) | 200 |
+| agent token → ungranted tool (`forget`) | 403, scope still closed |
+
+Confirmed at the MCP protocol layer too, via Inspector `tools/call`: the granted tool returns
+`isError: false`, the ungranted one returns `isError: true` with *"Ajan **'mcp_client'** için
+'forget' işlemi izni yok."* — note the identity. It resolves to `mcp_client` from the token
+rather than collapsing to `LEGACY_AGENT_ID`, which is the direct evidence that
+`KASA_MCP_AGENT_ID` is no longer inert. Evidence: `_orch/archive/measurements.json` →
+`F-MCP-OWNER-BEARER-FIX`.
+
+Residual, stated honestly: the owner-credential fallback still exists for backwards
+compatibility. An operator who ignores the stderr warning still runs the MCP surface as owner.
+Least privilege is now *available and documented*, not *enforced*.
+
+Two related defects found in the same pass **were** fixed, and are recorded because they mean
+the MCP surface was non-functional rather than merely unverified. `requirements.txt` declared
+`mcp>=1.2` with no upper bound; the SDK's 2.0.0 release removed `mcp.server.fastmcp`, so a
+clean install could not import the adapter at all (now pinned `<2`). And the adapter read
+`bearer_token` straight from config without unwrapping it, sending the **DPAPI-wrapped** 390-character
+value where the server expects the 43-character plaintext — every call returned `HTTP 401`
+(fixed by a single shared resolver, `src/config.py :: resolve_bearer_token`). Neither was caught
+by the test suite, because `tests/test_mcp_adapter.py` imports only the SDK-free proxy core and
+monkeypatches `urlopen`: **coverage of the layer that actually speaks MCP is zero.** Protocol
+conformance is now `RAN-LIVE` — MCP Inspector `tools/list` and `tools/call`, with an
+unauthorized call correctly refused and surfaced as `isError: true`. Full account:
+[`docs/KNOWLEDGE_ARCHIVE.md`](docs/KNOWLEDGE_ARCHIVE.md) §2.
 
 ### Before quoting a benchmark number, read its limits
 
@@ -424,16 +660,21 @@ kalktı. İkisi de `tests/test_browser_optin_gate.py` ile mühürlendi.
 - KASA v1'in tehdit modeli **"yerel süreç güvenilir"** varsayımına dayanır. Aynı kullanıcı
   bağlamındaki kötücül yazılım kapsam dışıdır; yerel-öncelikli tasarımlarda bu standarttır
   (`docs/THREAT_MODEL.md`, düşman sınıfı A).
-- **`agent_id` istemci-beyanlıdır (F-IMP bulgusu).** Kimlik token'a bağlı değil; yalnız
-  `"system"` rezerve (`src/mcp_server/server.py:63`), `browser` ise açılışta
-  `events:write` iznini otomatik alıyor (`src/mcp_server/server.py:81-84`). Ölçüldü:
-  token'ı olan biri `agent_id="browser"` diyerek bu yazma iznini devralabiliyor
-  (izole sunucuda `event_ingest` → HTTP 200). Ayrıntı:
-  `docs/MCP_CANLI_TEST_EYLEM_PLANI_2026-08-02.md` §F-IMP. Aynı kök neden hız sınırını da
-  deliyor: dönen kimlikle 150 istekte **0** adet 429, 300 istek audit zincirine 300 satır
-  yazdı (`docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md` §4.1). Sonuç açıkça söylenmeli:
-  zincir "bu kayıt değişmedi"yi gösterir, kimlik bağlanana kadar "bunu şu ajan yaptı"yı
-  göstermez.
+- **`agent_id` istemci-beyanlıydı (F-IMP bulgusu) — 2026-08-05'te KAPATILDI.** Kimlik artık
+  token'dan çözülüyor (`resolve_agent`, `src/mcp_server/server.py:240`); gövdedeki `agent_id`
+  yalnızca bir beyandır ve çelişirse 403 (`_bound_identity`, `src/mcp_server/server.py:309`).
+  Eskiden token'ı olan biri `agent_id="browser"` diyerek o yazma iznini devralabiliyordu
+  (izole sunucuda `event_ingest` → HTTP 200).
+  **Gerçek bir sunucuya karşı ölçüldü, 7/7** (`_orch/redteam/fimp_live_verify.py`): ölçülmüş
+  saldırı artık **403**, tanınmayan token **401**, iptal edilen token **401** — *ve* pozitif
+  kontrol de tutuyor: bağlı bir token kendisi olarak gerçek bir yazmayı **200** ile tamamlıyor.
+  Bu ikincisi rastgele bir ayrıntı değil: bu projede bir kez, kapının pozitif yönü tamamen
+  kırıkken test paketi yeşil yanmıştı. Aynı kök nedenin deldiği hız sınırı da kapandı: dönen
+  kimlikle 300 istek artık **240 adet 429** üretiyor (öncesinde 150 istekte **0**).
+  **Sınır açıkça:** kimlik *token*'a bağlıdır, gücü token gizliliği kadardır; vault dosyasını
+  okuyabilen aynı-OS saldırganı token üretebilir ve o sınıf tasarımla kapsam dışıdır. Kapanan
+  şey, **ağdan** atfın sahtelenmesidir. Zincir artık "bunu şu token yaptı"yı da gösterir —
+  ama "yazdığı şey doğru"yu göstermez; oraya F-POISON bakar.
 - **`kasa.db` at-rest tam şifreli DEĞİL** — yalnızca 3 kolon (`events.content`,
   `profile.value`, `audit.details`). Zaman damgaları, `profile.key`, `agent_id`, TTL ve
   hash-zinciri kolonları düz metin; sorgu/indeks/zincir bunlara bağlı. Kolon kolon ölçüm:
@@ -454,5 +695,8 @@ eklerseniz, o rapor değerlidir ve beklenir.
 **Ölçümle tuttuğu görülenler** (iddia değil, tarihli koşu okuması): yedi `AUTHZ-*`
 kontrolünün tamamı PASS, denetim zincirinin kurcalama ve silme tespiti PASS, `CRYPTO-ATREST`
 PASS, AAD bağı satır/kolon takasını bozuyor, sunucu varsayılan olarak `127.0.0.1`'e
-bağlanıyor. Kaynak: `docs/SECURITY_BENCHMARK.md` (2026-08-02 koşusu: 21 kontrol,
-18 PASS / 1 FAIL / 2 WARN, verdict **yayına hazır değil**).
+bağlanıyor. Kaynak: `docs/SECURITY_BENCHMARK.md` (2026-08-05 koşusu, commit `fc40b10`:
+21 kontrol, **21 PASS / 0 FAIL / 0 WARN**). Bastığı damga kelimesi *yayın-adayı*'dır;
+**bu kelime projenin durumu değildir** — dar bir takımda hiçbir kontrolün kalmadığı anlamına
+gelir, oysa F-POISON açık ve o takımda onu ölçen tek bir kontrol yoktur
+(`docs/SECURITY_BENCH_LIMITS.md`).

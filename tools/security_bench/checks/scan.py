@@ -22,6 +22,48 @@ def load_allowlist(path=None):
         return set()
 
 
+def load_bandit_triage(path=None):
+    """bandit_triage.json -> {(test_id, normalize_path): count}. Okunamazsa BOS (fail-closed)."""
+    path = path or os.path.join(os.path.dirname(__file__), "..", "bandit_triage.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return {(e["test_id"], e["path"].replace("\\", "/")): int(e["count"])
+                    for e in json.load(f)["triage"]}
+    except Exception:
+        return {}
+
+
+def filter_bandit(bandit_json, triage):
+    """raw bandit JSON -> (denetlenmemis_MEDIUM_listesi, bastirilan_sayi).
+
+    Turkce not — NEDEN (test_id, path, COUNT) ile anahtarlaniyor:
+      * satir numarasiyla anahtarlamak triyaji her duzenlemede bayatlatirdi (satirlar kayar);
+      * yalnizca (test_id, path) ile anahtarlamak AYNI dosyada acilan YENI bir bulguyu
+        sessizce gizlerdi -- yani triyaj bir KOR NOKTA uretirdi.
+    count, o dosyada o test icin kac bulgunun denetlendigini soyler; fazlasi yuzeye cikar.
+
+    HIGH burada hic ele alinmaz: triyaj yalnizca MEDIUM icindir, cagiran HIGH'i ayrica sayar.
+    """
+    med = [r for r in bandit_json.get("results", []) if r.get("issue_severity") == "MEDIUM"]
+    grouped = {}
+    for r in med:
+        p = str(r.get("filename", "")).replace("\\", "/")
+        for marker in ("/src/", "src/"):
+            i = p.find(marker)
+            if i != -1:
+                p = p[i + (1 if marker.startswith("/") else 0):]
+                break
+        grouped.setdefault((r.get("test_id"), p), []).append(r)
+
+    untriaged, suppressed = [], 0
+    for key, rows in sorted(grouped.items()):
+        allowed = triage.get(key, 0)
+        suppressed += min(allowed, len(rows))
+        for r in rows[allowed:]:
+            untriaged.append(f"{key[0]} {key[1]}:{r.get('line_number')}")
+    return untriaged, suppressed
+
+
 def filter_secrets(results_dict, allow):
     """raw detect-secrets results -> (real_bulgular_listesi, bastirilan_sayi).
     (path,type) allowlist'te ise bastir; degilse 'real'. bearer_token allowlist'te olmadigindan
@@ -69,25 +111,31 @@ def run():
             try:
                 results_data = json.loads(data)
                 high_issues = sum(1 for result in results_data["results"] if result["issue_severity"] == "HIGH")
-                medium_issues = sum(1 for result in results_data["results"] if result["issue_severity"] == "MEDIUM")
-                
+                # Triyaj suzgeci: DENETLENMIS bulgulari duser, kalani yuzeye cikarir.
+                # HIGH ASLA suzulmez -- triyaj yalnizca MEDIUM icin gecerlidir.
+                untriaged_med, suppressed_med = filter_bandit(results_data, load_bandit_triage())
+                medium_issues = len(untriaged_med) + suppressed_med
+
                 status = "PASS"
-                evidence = f"High: {high_issues}, Medium: {medium_issues}"
+                evidence = (f"High: {high_issues}, Medium: {medium_issues} "
+                            f"({suppressed_med} denetlenmis, {len(untriaged_med)} denetlenmemis)")
                 if high_issues > 0:
                     status = "FAIL"
                     evidence += "; Found HIGH severity issues."
-                elif medium_issues > 0:
+                elif untriaged_med:
                     status = "WARN"
-                    evidence += "; Found MEDIUM severity issues."
-                
+                    evidence += "; DENETLENMEMIS MEDIUM: " + "; ".join(untriaged_med[:6])
+
                 result = {
                     "id": "SCAN-BANDIT",
                     "category": "scan",
-                    "title": "Static Analysis with Bandit",
+                    "title": "Static Analysis with Bandit (triyaj-suzulmus)",
                     "status": status,
                     "severity": "high",
                     "evidence": evidence,
-                    "remediation": "pip install bandit; review src findings"
+                    "remediation": ("Yeni bulgu gercekse kaynaktan kaldir; yanlis-pozitif veya "
+                                    "kabul-edilen kalinti ise GEREKCESIYLE bandit_triage.json'a ekle "
+                                    "(count'u da guncelle).")
                 }
                 results.append(result)
             except json.JSONDecodeError:
@@ -225,7 +273,7 @@ def run():
         try:
             # Controller splice: path'siz 'scan' repo'yu taramiyordu (sahte PASS=0). --all-files ile
             # gercek dosyalar taranir; .pytest_cache (sabit CACHEDIR.TAG) false-positive olarak haric.
-            _EXCLUDE = (r"(^|[\\/])(build_nuitka_312|build_nuitka_onefile|build_nuitka)[\\/]"
+            _EXCLUDE = (r"(^|[\\/])(build_nuitka_312|build_nuitka_onefile|build_nuitka|_lab)[\\/]"
                         r"|\.pytest_cache")
             # Ayirici olarak [\\/] kullanilir, duz `/` DEGIL.
             # Olculdu (2026-08-02): ilk surum yalnizca `/` ile yazilmisti; Windows'ta yollar

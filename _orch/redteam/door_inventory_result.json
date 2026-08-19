@@ -1,0 +1,823 @@
+{
+  "measured_by_model": "claude-fable-5",
+  "measured_at": "2026-08-05T14:15:02+0200",
+  "git_commit": "7640e81",
+  "measurement_level": "RAN-LIVE (gercek uvicorn + gercek HTTP); 'deps' alani CODE-STRUCTURE",
+  "claim_under_test": "hafizaya (profile/events/audit) ulasan her AG YOLU kimlik dogrulamasi, izin brokeri veya sahip kapisiyla korunuyor; korunmayan yol YOK",
+  "method": "rotalar FastAPI app.routes'tan PROGRAMATIK cikarildi (elle liste yok); her rota 3 kimlik-bilgisi profiliyle denendi",
+  "isolation": {
+    "vault_home": "%TEMP%\\kasa_live_attack_yaakc94q",
+    "notes": [
+      "agent.harness.OLLAMA_BASE -> http://127.0.0.1:1 (yerel model servisi mesgul edilmesin; kapi olcumu etkilenmez, /v1/agent/* islev sonucu OLCULMEDI)"
+    ]
+  },
+  "credential_profiles": {
+    "no_token": "Authorization basligi YOK",
+    "agent_token": "agent_tokens'a bagli 'door-probe-lowpriv' — permissions tablosunda HIC kaydi yok",
+    "owner_token": "server._BEARER_TOKEN (sahip bearer'i; LEGACY_AGENT_ID kimligine cozulur)"
+  },
+  "route_count": 23,
+  "classification_distribution": {
+    "ACIK": 2,
+    "STATIK/UI": 7,
+    "KAYNAK-YOK(404)": 1,
+    "SAHIP-OZEL": 8,
+    "SAHIP-OZEL(islev-denenmedi)": 3,
+    "BROKERLI": 2
+  },
+  "routes": [
+    {
+      "path": "/openapi.json",
+      "methods": [
+        "GET"
+      ],
+      "kind": "starlette",
+      "probed_method": "GET",
+      "endpoint": "FastAPI.setup.<locals>.openapi",
+      "endpoint_module": "fastapi.applications",
+      "deps": [],
+      "body_source": "none",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "ACIK",
+      "snippet_no_token": "{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"Project KASA MCP Server\",\"description\":\"Ajanlar için yerel, güvenli hafıza kasası.\",\"version\":\"0.1.0\"},\"paths\":{\"/v1/dashboa",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/docs",
+      "methods": [
+        "GET"
+      ],
+      "kind": "starlette",
+      "probed_method": "GET",
+      "endpoint": "FastAPI.setup.<locals>.swagger_ui_html",
+      "endpoint_module": "fastapi.applications",
+      "deps": [],
+      "body_source": "none",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "text/html; charset=utf-8",
+      "owner_token_leaked_to": [],
+      "classification": "STATIK/UI",
+      "snippet_no_token": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <link type=\"text/css\" rel=\"stylesheet\"",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/docs/oauth2-redirect",
+      "methods": [
+        "GET"
+      ],
+      "kind": "starlette",
+      "probed_method": "GET",
+      "endpoint": "FastAPI.setup.<locals>.swagger_ui_redirect",
+      "endpoint_module": "fastapi.applications",
+      "deps": [],
+      "body_source": "none",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "text/html; charset=utf-8",
+      "owner_token_leaked_to": [],
+      "classification": "STATIK/UI",
+      "snippet_no_token": "\n    <!doctype html>\n    <html lang=\"en-US\">\n    <head>\n        <title>Swagger UI: OAuth2 Redirect</title>\n    </head>\n    <body>\n    <script>\n        'use stri",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/redoc",
+      "methods": [
+        "GET"
+      ],
+      "kind": "starlette",
+      "probed_method": "GET",
+      "endpoint": "FastAPI.setup.<locals>.redoc_html",
+      "endpoint_module": "fastapi.applications",
+      "deps": [],
+      "body_source": "none",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "text/html; charset=utf-8",
+      "owner_token_leaked_to": [],
+      "classification": "STATIK/UI",
+      "snippet_no_token": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <title>Project KASA MCP Server - ReDoc</title>\n    <!-- needed for adaptive design -->\n    <meta charset=\"utf-8\"/",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/assets",
+      "methods": [
+        "GET"
+      ],
+      "kind": "mount",
+      "probed_method": "GET",
+      "endpoint": "StaticFiles",
+      "endpoint_module": "starlette.mount",
+      "deps": [],
+      "body_source": "none",
+      "body_sent": null,
+      "no_token": 404,
+      "agent_token": 404,
+      "owner_token": 404,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "KAYNAK-YOK(404)",
+      "snippet_no_token": "{\"detail\":\"Not Found\"}",
+      "snippet_agent_token": "{\"detail\":\"Not Found\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/assets/fonts/inter-400.woff2",
+      "methods": [
+        "GET"
+      ],
+      "kind": "mount-file",
+      "probed_method": "GET",
+      "endpoint": "StaticFiles",
+      "endpoint_module": "starlette.mount",
+      "deps": [],
+      "body_source": "none",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "font/woff2",
+      "owner_token_leaked_to": [],
+      "classification": "STATIK/UI",
+      "snippet_no_token": "wOF2\u0000\u0001\u0000\u0000\u0000\u0000\\�\u0000\u0010\u0000\u0000\u0000\u0001\u0007\b\u0000\u0000\\)\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u001a�P\u001b��\u0018\u001c�p\u0006`?STAT^\u0000�>\u0011\b\n��\u0000��>\u000b�\u0010\u0000\u00016\u0002$\u0003�\u001c\u0004 \u0005�\\\u0007�\u0010\f\u0007\u001b��Ghv_�v@oV�v\u0000���\u0005��AZXzn\u0012�i=�:\u001ba��\u0001\u0016ƺ'���?'��aڑ�\u001d\u0006�\u0007=�\u0010�ȊNl",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/dashboard/stats",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.dashboard_stats",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [
+        "get_vault",
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/dashboard/events",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.dashboard_events",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [
+        "get_vault",
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/dashboard/profile",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.dashboard_profile",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [
+        "get_vault",
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/dashboard/audit/run",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.dashboard_audit",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [
+        "get_vault",
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/dashboard/audit/report",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.dashboard_audit_report",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [
+        "get_vault",
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/dashboard",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.dashboard_index",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "text/html; charset=utf-8",
+      "owner_token_leaked_to": [],
+      "classification": "STATIK/UI",
+      "snippet_no_token": "<!DOCTYPE html>\n<html lang=\"tr\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>KASA — Güvenlik Panos",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/dashboard/app.js",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.dashboard_appjs",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/javascript",
+      "owner_token_leaked_to": [],
+      "classification": "STATIK/UI",
+      "snippet_no_token": "// kasa/dashboard_ui/app.js\n// Uretim: yerel model (qwen2.5-coder:14b, zero-token). Opus: spec + guvenlik-denetimi + splice.\n// Guvenlik: yalniz same-origin rel",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/terms",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.terms_index",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "text/html; charset=utf-8",
+      "owner_token_leaked_to": [],
+      "classification": "STATIK/UI",
+      "snippet_no_token": "<!-- kasa/dashboard_ui/terms.html -->\n<!-- Ilk-acilis kullanim sartlari kapisi. Self-contained (air-gap: dis kaynak YOK). -->\n<!-- Token server-tarafi enjekte e",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/terms/status",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.terms_status",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/terms/accept",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api",
+      "probed_method": "POST",
+      "endpoint": "register.<locals>.terms_accept",
+      "endpoint_module": "src.dashboard.routes",
+      "deps": [
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/agent/models",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "register.<locals>.agent_models",
+      "endpoint_module": "src.agent.routes",
+      "deps": [
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/agent/model",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api",
+      "probed_method": "POST",
+      "endpoint": "register.<locals>.agent_select_model",
+      "endpoint_module": "src.agent.routes",
+      "deps": [
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": {
+        "name": "x"
+      },
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 503,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL(islev-denenmedi)",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/agent/chat",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api",
+      "probed_method": "POST",
+      "endpoint": "register.<locals>.agent_chat",
+      "endpoint_module": "src.agent.routes",
+      "deps": [
+        "get_vault",
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": {
+        "message": "x"
+      },
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 503,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL(islev-denenmedi)",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/agent/race",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api",
+      "probed_method": "POST",
+      "endpoint": "register.<locals>.agent_race",
+      "endpoint_module": "src.agent.routes",
+      "deps": [
+        "get_vault",
+        "require_owner"
+      ],
+      "body_source": "auto",
+      "body_sent": {
+        "message": "x",
+        "models": []
+      },
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 503,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "SAHIP-OZEL(islev-denenmedi)",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Bu uç yalnızca sahip içindir.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/execute_tool",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api",
+      "probed_method": "POST",
+      "endpoint": "execute_tool",
+      "endpoint_module": "src.mcp_server.server",
+      "deps": [
+        "get_vault",
+        "verify_token"
+      ],
+      "body_source": "override",
+      "body_sent": {
+        "tool_calls": [
+          {
+            "tool_name": "profile_read",
+            "parameters": {
+              "scope": "user.name"
+            }
+          }
+        ]
+      },
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 403,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "BROKERLI",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Ajan 'door-probe-lowpriv' için 'user.name' okuma izni yok.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/v1/ingest",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api",
+      "probed_method": "POST",
+      "endpoint": "ingest",
+      "endpoint_module": "src.mcp_server.server",
+      "deps": [
+        "get_vault",
+        "verify_token"
+      ],
+      "body_source": "override",
+      "body_sent": {
+        "tool": "event_ingest",
+        "params": {
+          "source": "door-inventory",
+          "type": "probe",
+          "content": {
+            "text": "door-inventory-probe"
+          },
+          "ttl_days": 5
+        }
+      },
+      "no_token": 401,
+      "agent_token": 403,
+      "owner_token": 403,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "BROKERLI",
+      "snippet_no_token": "{\"detail\":\"Not authenticated\"}",
+      "snippet_agent_token": "{\"detail\":\"Ajan 'door-probe-lowpriv' için olay yazma izni yok.\"}",
+      "identity_gate_hit": false
+    },
+    {
+      "path": "/",
+      "methods": [
+        "GET"
+      ],
+      "kind": "api",
+      "probed_method": "GET",
+      "endpoint": "health_check",
+      "endpoint_module": "src.mcp_server.server",
+      "deps": [],
+      "body_source": "auto",
+      "body_sent": null,
+      "no_token": 200,
+      "agent_token": 200,
+      "owner_token": 200,
+      "no_token_error": null,
+      "agent_token_error": null,
+      "owner_token_error": null,
+      "content_type_no_token": "application/json",
+      "owner_token_leaked_to": [],
+      "classification": "ACIK",
+      "snippet_no_token": "{\"status\":\"ok\",\"version\":\"0.2.0\"}",
+      "snippet_agent_token": "",
+      "identity_gate_hit": false
+    }
+  ],
+  "unauthenticated_2xx": [
+    {
+      "path": "/openapi.json",
+      "method": "GET",
+      "http": 200,
+      "classification": "ACIK",
+      "content_type": "application/json",
+      "vault_dependency": false,
+      "endpoint": "fastapi.applications.FastAPI.setup.<locals>.openapi"
+    },
+    {
+      "path": "/docs",
+      "method": "GET",
+      "http": 200,
+      "classification": "STATIK/UI",
+      "content_type": "text/html; charset=utf-8",
+      "vault_dependency": false,
+      "endpoint": "fastapi.applications.FastAPI.setup.<locals>.swagger_ui_html"
+    },
+    {
+      "path": "/docs/oauth2-redirect",
+      "method": "GET",
+      "http": 200,
+      "classification": "STATIK/UI",
+      "content_type": "text/html; charset=utf-8",
+      "vault_dependency": false,
+      "endpoint": "fastapi.applications.FastAPI.setup.<locals>.swagger_ui_redirect"
+    },
+    {
+      "path": "/redoc",
+      "method": "GET",
+      "http": 200,
+      "classification": "STATIK/UI",
+      "content_type": "text/html; charset=utf-8",
+      "vault_dependency": false,
+      "endpoint": "fastapi.applications.FastAPI.setup.<locals>.redoc_html"
+    },
+    {
+      "path": "/assets/fonts/inter-400.woff2",
+      "method": "GET",
+      "http": 200,
+      "classification": "STATIK/UI",
+      "content_type": "font/woff2",
+      "vault_dependency": false,
+      "endpoint": "starlette.mount.StaticFiles"
+    },
+    {
+      "path": "/dashboard",
+      "method": "GET",
+      "http": 200,
+      "classification": "STATIK/UI",
+      "content_type": "text/html; charset=utf-8",
+      "vault_dependency": false,
+      "endpoint": "src.dashboard.routes.register.<locals>.dashboard_index"
+    },
+    {
+      "path": "/dashboard/app.js",
+      "method": "GET",
+      "http": 200,
+      "classification": "STATIK/UI",
+      "content_type": "application/javascript",
+      "vault_dependency": false,
+      "endpoint": "src.dashboard.routes.register.<locals>.dashboard_appjs"
+    },
+    {
+      "path": "/terms",
+      "method": "GET",
+      "http": 200,
+      "classification": "STATIK/UI",
+      "content_type": "text/html; charset=utf-8",
+      "vault_dependency": false,
+      "endpoint": "src.dashboard.routes.register.<locals>.terms_index"
+    },
+    {
+      "path": "/",
+      "method": "GET",
+      "http": 200,
+      "classification": "ACIK",
+      "content_type": "application/json",
+      "vault_dependency": false,
+      "endpoint": "src.mcp_server.server.health_check"
+    }
+  ],
+  "unauthenticated_2xx_with_vault_dependency": [],
+  "positive_controls": {
+    "owner_reaches_owner_route": {
+      "probe": "GET /v1/dashboard/stats (sahip bearer'i)",
+      "http": 200,
+      "error": null,
+      "passed": true,
+      "other_owner_2xx_routes": [
+        "/v1/dashboard/stats",
+        "/v1/dashboard/events",
+        "/v1/dashboard/profile",
+        "/v1/dashboard/audit/run",
+        "/v1/dashboard/audit/report",
+        "/v1/terms/status",
+        "/v1/terms/accept",
+        "/v1/agent/models"
+      ]
+    },
+    "granted_agent_reaches_tool": {
+      "probe": "POST /v1/ingest event_ingest (bagli ajan token'i)",
+      "before_grant_http": 403,
+      "after_grant_http": 200,
+      "scope_granted": "events:write",
+      "error": null,
+      "passed": true,
+      "note": "izin ONCESI 403 + SONRASI 2xx = broker gercekten izne bakiyor (pozitif + negatif kontrol ayni olcumde)"
+    },
+    "leak_sentinel_works": {
+      "probe": "GET /dashboard?k=<launch_nonce> (token YOK) vs GET /dashboard (nonce YOK)",
+      "with_nonce_http": 200,
+      "with_nonce_contains_owner_token": true,
+      "without_nonce_http": 200,
+      "without_nonce_contains_owner_token": false,
+      "error": null,
+      "passed": true,
+      "note": "nonce ILE sizdirmasi TASARIM (launch.py sirri); onemli olan sentinel'in ates edebildigi (yani 'sizinti yok' sonucunun bos bir dedektorden gelmedigi) ve nonce'suz istekte token'in GOMULMEDIGI."
+    }
+  },
+  "findings": [
+    {
+      "path": "/openapi.json",
+      "method": "GET",
+      "classification": "ACIK",
+      "no_token_http": 200,
+      "touches_vault": false,
+      "deps": [],
+      "owner_token_leaked_to": [],
+      "snippet": "{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"Project KASA MCP Server\",\"description\":\"Ajanlar için yerel, güvenli hafıza kasası.\",\"version\":\"0.1.0\"},\"paths\":{\"/v1/dashboa"
+    },
+    {
+      "path": "/",
+      "method": "GET",
+      "classification": "ACIK",
+      "no_token_http": 200,
+      "touches_vault": false,
+      "deps": [],
+      "owner_token_leaked_to": [],
+      "snippet": "{\"status\":\"ok\",\"version\":\"0.2.0\"}"
+    }
+  ],
+  "not_a_network_route": {
+    "path": "src/distill/engine.py",
+    "statement": "Damitici bir AG ROTASI DEGILDIR. Surec-ici calisir, kendi sqlite3 baglantisiyla events okur ve profile_quarantine'a yazar; VaultTools/_check_permission izin brokerinden GECMEZ.",
+    "tested": false,
+    "why_not_tested": "HTTP yuzeyi yok -> bu envanterin kapsami disinda. Kusur degil, tasarim gercegi; ama envanterde GORUNMELI: brokersiz surec-ici yazma yolu.",
+    "actor": "A1 (prompt-zehirli model) icin dolayli ilgi: damitici zehirli olay metnini okur; yazimi karantinaya duser (ayri olcum konusu)."
+  },
+  "limits": [
+    "Yalniz HTTP yuzeyi olculdu; surec-ici yollar (damitici, MCP stdio adaptoru, dogrudan SQLite erisimi) KAPSAM DISI.",
+    "A4 (ayni-OS kullanici) KAPSAM DISI: token dosyasi zaten okunabilir.",
+    "Her rota icin TEK metot denendi (POST varsa POST); ayni yolun diger metotlari ayri olculmedi.",
+    "/v1/agent/* icin yerel model servisi bilerek erisilemez kilindi -> o rotalarda KAPI olculdu, ISLEV olculmedi."
+  ],
+  "errors": []
+}

@@ -1,0 +1,50 @@
+{
+  "measured_at": "2026-08-05T21:14:47",
+  "level": "RAN-LIVE",
+  "positive_control": {
+    "http": 403,
+    "audit_rows": 1
+  },
+  "cases": [
+    {
+      "id": "AUTHZ-TOKEN-MISSING",
+      "http": 401,
+      "bench_verdict": "PASS",
+      "predicate": "status in [401,403]",
+      "audit_rows_written": 0,
+      "gate_reached": false,
+      "refusing_gate": "auth:no-bearer",
+      "body": "{\"detail\":\"Not authenticated\"}"
+    },
+    {
+      "id": "AUTHZ-TOKEN-WRONG",
+      "http": 401,
+      "bench_verdict": "PASS",
+      "predicate": "status == 401",
+      "audit_rows_written": 0,
+      "gate_reached": false,
+      "refusing_gate": "auth:unknown-token",
+      "body": "{\"detail\":\"Geçersiz token.\"}"
+    },
+    {
+      "id": "AUTHZ-C5",
+      "http": 403,
+      "bench_verdict": "PASS",
+      "predicate": "status == 403",
+      "audit_rows_written": 0,
+      "gate_reached": false,
+      "refusing_gate": "identity-binding:UNREACHED-TARGET",
+      "body": "{\"detail\":\"agent_id token'a bağlı kimlikle uyuşmuyor.\"}"
+    },
+    {
+      "id": "AUTHZ-DENY",
+      "http": 403,
+      "bench_verdict": "PASS",
+      "predicate": "status == 403",
+      "audit_rows_written": 0,
+      "gate_reached": false,
+      "refusing_gate": "identity-binding:UNREACHED-TARGET",
+      "body": "{\"detail\":\"agent_id token'a bağlı kimlikle uyuşmuyor.\"}"
+    }
+  ]
+}

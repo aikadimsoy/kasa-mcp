@@ -114,7 +114,8 @@ def test_dashboard_routes_registered_on_app():
     from src.dashboard.routes import register
 
     app = FastAPI()
-    register(app, lambda: None, lambda: None, "tok")
+    # imza: register(app, get_vault, bearer_token, require_owner, launch_nonce)
+    register(app, lambda: None, "tok", lambda: None, "nonce")
     paths = {getattr(r, "path", None) for r in app.routes}
     assert "/v1/dashboard/stats" in paths
     assert "/v1/dashboard/events" in paths
@@ -130,7 +131,8 @@ def test_dashboard_json_endpoints_are_async():
     from src.dashboard.routes import register
 
     app = FastAPI()
-    register(app, lambda: None, lambda: None, "tok")
+    # imza: register(app, get_vault, bearer_token, require_owner, launch_nonce)
+    register(app, lambda: None, "tok", lambda: None, "nonce")
     routes = {getattr(r, "path", None): r for r in app.routes}
     for p in ("/v1/dashboard/stats", "/v1/dashboard/events"):
         assert inspect.iscoroutinefunction(routes[p].endpoint), f"{p} async olmali"

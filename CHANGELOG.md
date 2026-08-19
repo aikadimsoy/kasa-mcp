@@ -8,6 +8,61 @@ Biçim [Keep a Changelog](https://keepachangelog.com/) yaklaşımına dayanır.
 
 ---
 
+## [Yayımlanmadı] — 2026-08-19 — ölçüm aletinin kendisi ölçüldü
+
+Bu girdi bir özellik duyurusu değil, bir **düzeltme kaydıdır**. Aynı gün içinde
+yayımlanan `kasa-scan` tarayıcısı ve PDF raporu, ölçmedikleri şeyler hakkında
+hüküm veriyordu. Kusurlar sessizce düzeltilmedi; ne olduğu burada yazıyor.
+
+### Düzeltildi
+- **`kasa-scan` güvensiz hedefleri "geçti" ilan ediyordu.** Ölçüm: her isteğe
+  HTTP 404 dönen, kimlik doğrulaması / karantinası / egress kontrolü olmayan bir
+  sunucuya tarayıcı **%60 güvenlik skoru ve 3/5 PASS** verdi. İki sebep vardı:
+  - HTTP 404 (rota yok) iki kontrolde `PASS` sayılıyordu. Artık `SKIP`.
+    "Uç nokta yok" ile "saldırı engellendi" aynı şey değildir.
+  - `EGRESS-DATA-LEAK` kontrolü hedef sunucuya **hiç istek göndermiyordu**;
+    KASA'nın kendi yerel `validate_egress_call` fonksiyonunu çağırıp sonucu
+    hedefin karnesine `PASS` diye yazıyordu. Artık varsayılan `SKIP`; yerel
+    öz-sınama yalnız `--self-test` ile koşar ve satırında `[YEREL OZ-SINAMA]`
+    etiketini taşır.
+  - Yetki kapısında duran (401/403) bir yazma isteği artık karantina kanıtı
+    sayılmıyor — karantina motoruna hiç ulaşılmadığı için `SKIP`.
+  - Hiçbir kontrol ölçülemediyse **skor basılmıyor** (`OLCULEMEDI`), çıkış kodu
+    `2` dönüyor; CI bunu yeşil okumasın diye.
+- **PDF raporundaki rakip karşılaştırma grafiği kaldırıldı.** Barlar elle
+  yazılmış sayılardan üretiliyordu (`kasa=[100,100,100,100,100]`,
+  `mem0=[25,30,0,20,15]`, `letta=[35,20,0,15,15]`, `zep=[20,15,0,15,10]`).
+  Mem0, Letta ve Zep kurulmadı, koşturulmadı, ölçülmedi — grafik bir ölçüm
+  değil tahmindi. Yerine sayısız, kaynak gösteren bir konumlandırma tablosu ve
+  açık bir "bu bir karşılaştırma testi değildir" notu geldi.
+- **PDF tehdit matrisi.** Beş satırın beşi de `PASS` diyordu; oysa 21 kontrollük
+  güvenlik tezgâhının kategorileri authz/kripto/tarama/denetim/fuzz ve
+  **enjeksiyon ile egress kontrolü içermiyor**. Sonuç sütunu artık
+  ÖLÇÜLDÜ / KISMEN / ÖLÇÜLMEDİ ayrımını ve açık bulgu numaralarını taşıyor.
+- **"357 test %100 PASS" ifadesi.** 1 xfail bir geçiş değildir; beklenen
+  başarısızlıktır. "%100 PASS" ifadesi kaldırıldı, yerine ölçülen döküm ve
+  testlerin *neyi göstermediği* yazıldı. **357 sayısının kendisi doğruydu**
+  (354 + eski `test_scanner_cli.py`'deki 3 mock testi). Bu ağaçta güncel ölçüm:
+  **368** — 367 geçti, 1 xfail. Artış, 3 mock testinin 14 gerçek-sunucu testiyle
+  değiştirilmesinden geliyor. README'deki 323 sayısı 2026-08-05 koşusundan
+  kalmaydı; o da güncellendi.
+- **README.** `kasa-scan` tanıtımı "herhangi bir MCP sunucusunu denetle"
+  yerine, hangi dört şeyi ölçtüğünü ve neyi ölçemediğini sayıyor.
+
+### Eklendi
+- `tests/test_scanner_cli.py` — tarayıcının **iki yönlü** testi (14 test):
+  güvensiz fixture'da FAIL ateşler, uygulanamaz hedefte susar (`SKIP`), hedefe
+  düşen istek sayısını ağ seviyesinde sayar. Bir ölçüm cihazı ana koşuya
+  girmeden önce iki yönlü sınanır; bu dosya o kuralın karşılığıdır.
+- README'ye durum rozetleri — açık bulgu sayısı dahil.
+
+### Bilinen sınır
+- Bozuk tarayıcı sürümünü kimin klonladığı **ölçülemedi**: GitHub trafik API'si
+  bu düzeltme yazılırken 2026-08-17'de bitiyordu, bozuk sürüm ise 2026-08-19'da
+  push edilmişti. Maruziyet bilinmiyor, sıfır olduğu varsayılmıyor.
+
+---
+
 ## [0.1.0] — 2026-08-03 — ilk kamuya açık sürüm
 
 MVP-0 çekirdeği: yerel-öncelikli şifreli hafıza kasası + izin-aracılı MCP sunucusu.

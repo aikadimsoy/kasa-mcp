@@ -18,7 +18,7 @@ import os as _os
 _KASA_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 sys.path.insert(0, _KASA_ROOT)
 
-from src.desktop import consent
+from src import consent   # desktop'tan cekirdege tasindi (bkz. dashboard/routes.py yorumu)
 
 
 @pytest.fixture
@@ -71,11 +71,29 @@ def test_status_requires_bearer(client):
 
 
 def test_terms_page_served_and_token_injected(client):
+    """SOZLESME DEGISTI (F-DASH): token ancak GECERLI LAUNCH NONCE ile enjekte edilir.
+
+    Turkce not: bu test eskiden tokensiz GET /terms'in token ENJEKTE ETMESINI DOGRU
+    sayiyordu -- oysa canli lab bunun tam owner-yukselmesine yol actigini gosterdi
+    (sifir kimlik -> /terms|/dashboard -> owner token -> her sey). Artik:
+      - nonce'suz GET /terms  -> token GOMULMEZ (sizinti yok)
+      - nonce'lu GET /terms   -> token gomulur (sahibin mesru launcher yolu)
+    """
+    import importlib
+    srv = importlib.import_module("src.mcp_server.server")
     c, token = client
+
+    # nonce'suz: token SIZMAMALI
     r = c.get("/terms")
     assert r.status_code == 200
-    body = r.text
-    assert token in body                 # server-tarafi token enjekte edildi
+    assert token not in r.text, "F-DASH: /terms tokensiz istekte owner token'i sizdirdi"
+    assert "__KASA_TOKEN__" not in r.text  # placeholder yine de degistirildi (bos ile)
+
+    # nonce'lu: token gomulmeli (owner akisi calisir)
+    r2 = c.get(f"/terms?k={srv._LAUNCH_NONCE}")
+    assert r2.status_code == 200
+    body = r2.text
+    assert token in body                 # gecerli nonce -> token enjekte
     assert "__KASA_TOKEN__" not in body   # placeholder degistirildi
     # Air-gap: sayfa DIS kaynak (http/https CDN) YUKLEMEZ. Guvenli disari-URL sadece MS
     # indirme baglantilaridir ve onlar terms.html'de degil (preflight'ta). Burada hic olmamali.

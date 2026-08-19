@@ -48,14 +48,20 @@ class RaceRequest(BaseModel):
     history: list | None = None
 
 
-def register(app, get_vault, verify_token) -> None:
-    """Ajan uclarini app uzerine dogrudan kaydeder (add_api_route; dairesel import yok)."""
+def register(app, get_vault, require_owner) -> None:
+    """Ajan uclarini app uzerine dogrudan kaydeder (add_api_route; dairesel import yok).
 
-    async def agent_models(_=Security(verify_token)):
+    Turkce not: imza `verify_token` -> `require_owner` oldu. Ajan koprusu (model degistir,
+    chat, race, model listesi) OWNER islemidir; ag ajaninin yuzeyi degil. verify_token
+    HERHANGI gecerli bearer'i kabul ederdi ve dusuk-yetkili token bu uclara ulasirdi
+    (canli olcum: /v1/agent/models 200). require_owner yalnizca SAHIP bearer'ini gecirir.
+    """
+
+    async def agent_models(_=Security(require_owner)):
         service_up, models = await asyncio.to_thread(harness.list_installed_models)
         return {"service_up": service_up, "models": models, "selected": store.get_selected_model()}
 
-    async def agent_select_model(body: ModelSelectRequest, _=Security(verify_token)):
+    async def agent_select_model(body: ModelSelectRequest, _=Security(require_owner)):
         service_up, models = await asyncio.to_thread(harness.list_installed_models)
         if not service_up:
             raise HTTPException(status_code=503, detail="local model service is not running")
@@ -65,7 +71,7 @@ def register(app, get_vault, verify_token) -> None:
         store.set_selected_model(body.name)
         return {"ok": True, "selected": body.name}
 
-    async def agent_chat(body: ChatRequest, vault=Depends(get_vault), _=Security(verify_token)):
+    async def agent_chat(body: ChatRequest, vault=Depends(get_vault), _=Security(require_owner)):
         ok, reason = gate.validate_message(body.message)
         if not ok:
             raise HTTPException(status_code=400, detail=reason)
@@ -81,7 +87,7 @@ def register(app, get_vault, verify_token) -> None:
             except RuntimeError as e:
                 raise HTTPException(status_code=503, detail=str(e))
 
-    async def agent_race(body: RaceRequest, vault=Depends(get_vault), _=Security(verify_token)):
+    async def agent_race(body: RaceRequest, vault=Depends(get_vault), _=Security(require_owner)):
         ok, reason = gate.validate_message(body.message)
         if not ok:
             raise HTTPException(status_code=400, detail=reason)

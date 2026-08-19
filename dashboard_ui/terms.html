@@ -118,7 +118,8 @@
           headers: { "Authorization": "Bearer " + TOKEN },
         });
         if (!r.ok) throw new Error("HTTP " + r.status);
-        window.location.href = "/dashboard";
+        // F-DASH: launch nonce'unu (?k=...) /dashboard'a TASI; yoksa dashboard tokensiz acilir.
+        window.location.href = "/dashboard" + window.location.search;
       } catch (e) {
         err.textContent = "Kayıt başarısız: " + e.message;
         accept.disabled = false;

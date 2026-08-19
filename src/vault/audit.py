@@ -11,8 +11,27 @@ import hashlib
 import time
 import json
 
+def _merkle_root(hashes: list) -> str:
+    """SHA-256 binary Merkle root over hex leaf hashes (odd level duplicates the last node).
+
+    Turkce not (Faz-1): checkpoint, kapsanan tum entry_hash'lere TEK bir kok ile baglanir;
+    ileride belli bir kaydin dahil oldugu inclusion-proof uretilebilir. Bos liste -> sabit tohum.
+    """
+    if not hashes:
+        return hashlib.sha256(b"empty-merkle").hexdigest()
+    level = [hashlib.sha256(h.encode("utf-8")).digest() for h in hashes]
+    while len(level) > 1:
+        nxt = []
+        for i in range(0, len(level), 2):
+            left = level[i]
+            right = level[i + 1] if i + 1 < len(level) else left
+            nxt.append(hashlib.sha256(left + right).digest())
+        level = nxt
+    return level[0].hex()
+
+
 class AuditChain:
-    def __init__(self, connection: sqlite3.Connection, key: bytes = None):
+    def __init__(self, connection: sqlite3.Connection, key: bytes = None, signing_key=None):
         """
         AuditChain'i başlatır.
 
@@ -20,9 +39,25 @@ class AuditChain:
             connection: Aktif veritabanı bağlantısı.
             key: (L2) verilirse audit.details ENCRYPT-THEN-HASH ile at-rest sifrelenir.
                  None ise details duz metin kalir (test/legacy harness'lari icin).
+            signing_key: (Faz-1) Ed25519 private key. Verilirse her kayit entry_hash uzerinden
+                 IMZALANIR ve verify_chain imzayi public key ile URETICIDEN BAGIMSIZ dogrular.
+                 None ise imzalama yok (legacy/test) -> yalniz hash-zinciri korunur.
         """
         self.conn = connection
         self._key = key
+        self._signing_key = signing_key
+        self._public_key = signing_key.public_key() if signing_key is not None else None
+
+    @staticmethod
+    def verify_entry_signature(entry_hash: str, signature_hex: str, public_key_hex: str) -> bool:
+        """Independent check: is `signature_hex` a valid Ed25519 signature of `entry_hash`?"""
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        try:
+            pk = Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_key_hex))
+            pk.verify(bytes.fromhex(signature_hex), entry_hash.encode("utf-8"))
+            return True
+        except Exception:
+            return False
 
     def _get_last_hash(self) -> str:
         """Veritabanındaki son denetim kaydının hash'ini alır."""
@@ -79,14 +114,19 @@ class AuditChain:
         hasher.update(previous_hash.encode('utf-8'))
         entry_hash = hasher.hexdigest()
 
+        # Faz-1: entry_hash'i Ed25519 ile imzala (varsa) -> bagimsiz dogrulanabilirlik.
+        signature = None
+        if self._signing_key is not None:
+            signature = self._signing_key.sign(entry_hash.encode("utf-8")).hex()
+
         # Veritabanına kaydet
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT INTO audit (timestamp, agent_id, action, details, previous_hash, entry_hash)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO audit (timestamp, agent_id, action, details, previous_hash, entry_hash, signature)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (timestamp, agent_id, action, details_stored, previous_hash, entry_hash)
+            (timestamp, agent_id, action, details_stored, previous_hash, entry_hash, signature)
         )
         self.conn.commit()
 
@@ -100,7 +140,7 @@ class AuditChain:
             Zincir geçerliyse True, değilse False.
         """
         cursor = self.conn.cursor()
-        cursor.execute("SELECT id, timestamp, agent_id, action, details, previous_hash, entry_hash FROM audit ORDER BY id ASC")
+        cursor.execute("SELECT id, timestamp, agent_id, action, details, previous_hash, entry_hash, signature FROM audit ORDER BY id ASC")
         rows = cursor.fetchall()
 
         last_hash = hashlib.sha256(b"genesis").hexdigest()
@@ -135,7 +175,17 @@ class AuditChain:
             if recalculated_hash != row['entry_hash']:
                 print(f"Hata: Kayıt {row['id']} için içerik değiştirilmiş! Hash uyuşmazlığı.")
                 return False
-            
+
+            # Faz-1: imza varsa Ed25519 ile bagimsiz dogrula (public key). Legacy (NULL) satir
+            # -> yalniz hash-zinciri gecerli. Imza var ama gecersiz -> kurcalama, zincir bozuk.
+            sig = row['signature'] if 'signature' in row.keys() else None
+            if sig and self._public_key is not None:
+                try:
+                    self._public_key.verify(bytes.fromhex(sig), row['entry_hash'].encode('utf-8'))
+                except Exception:
+                    print(f"Hata: Kayıt {row['id']} imzası geçersiz (Ed25519).")
+                    return False
+
             last_hash = recalculated_hash
 
         return True
@@ -154,14 +204,17 @@ class AuditChain:
         last = cursor.fetchone()
         if last is None:
             return {"status": "empty", "checkpoint_id": None}
-        cursor.execute("SELECT COUNT(*) FROM audit WHERE id <= ?", (last["id"],))
-        entry_count = cursor.fetchone()[0]
+        cursor.execute("SELECT entry_hash FROM audit WHERE id <= ? ORDER BY id ASC", (last["id"],))
+        leaves = [r["entry_hash"] for r in cursor.fetchall()]
+        entry_count = len(leaves)
+        merkle_root = _merkle_root(leaves)  # Faz-1: kapsanan entry_hash'lerin Merkle koku
         cursor.execute(
-            "INSERT INTO audit_checkpoint (created_at, upto_id, upto_hash, entry_count) VALUES (?, ?, ?, ?)",
-            (time.time(), last["id"], last["entry_hash"], entry_count))
+            "INSERT INTO audit_checkpoint (created_at, upto_id, upto_hash, entry_count, merkle_root) VALUES (?, ?, ?, ?, ?)",
+            (time.time(), last["id"], last["entry_hash"], entry_count, merkle_root))
         self.conn.commit()
         return {"status": "success", "checkpoint_id": cursor.lastrowid,
-                "upto_id": last["id"], "upto_hash": last["entry_hash"], "entry_count": entry_count}
+                "upto_id": last["id"], "upto_hash": last["entry_hash"], "entry_count": entry_count,
+                "merkle_root": merkle_root}
 
     def archive_up_to(self, checkpoint_id: int) -> dict:
         """

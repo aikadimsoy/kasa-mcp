@@ -35,16 +35,23 @@ def test_health_check(server_client):
     assert response.json()["status"] == "ok"
 
 
-def test_end_to_end_ingest(server_client):
+def test_end_to_end_ingest(server_client, issue_token):
     """Uctan uca: yetkili POST /v1/ingest (browser, events:write auto-grant) -> 200 + success.
-    Not: 'system' artik ag disindan reddedilir (C5 fix); mesru ajan 'browser' kullanilir."""
+    Not: 'system' artik ag disindan reddedilir (C5 fix); mesru ajan 'browser' kullanilir.
+
+    Turkce not (kimlik baglama sonrasi): bu test eskiden PAYLASILAN token ile
+    agent_id="browser" BEYAN ederek 200 aliyordu -- yani F-IMP'in ta kendisi olan yoldan
+    geciyordu. Uretimde artik boyle bir yol yok; bu yuzden test browser'a BAGLI bir token
+    kullaniyor. Olculen sey aynidir (uctan uca yazma calisiyor mu), gecilen yol gercek.
+    """
+    headers = issue_token("browser")
     payload = {
         "tool": "event_ingest",
         "agent_id": "browser",
         "params": {"source": "smoke", "type": "page_view", "content": {"a": 1}},
     }
     response = server_client["client"].post(
-        "/v1/ingest", headers=server_client["headers"], json=payload
+        "/v1/ingest", headers=headers, json=payload
     )
     assert response.status_code == 200
     assert response.json()["result"]["status"] == "success"

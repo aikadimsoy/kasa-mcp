@@ -1,0 +1,14 @@
+# Turkce not: Bu dosya, DOGRULAMA icin gerekenleri tutar; uretim bagimliligi degil.
+#
+# Neden ayri bir dosya: docs/REPRODUCE.md dort ayri satirda `pytest ...` komutu
+# veriyor, ama on kosulu yalniz `pip install -r requirements.txt` idi ve orada
+# pytest YOKTU. Yani "kendin dogrula" diyen belgeyi harfiyen izleyen biri
+# "No module named pytest" aliyordu. Ayni kok sebep CI'i da kirdi
+# (kosu 32273844029, 2026-08-19).
+#
+# Kullanim:
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+-r requirements.txt
+
+pytest>=8.0

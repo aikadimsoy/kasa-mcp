@@ -132,19 +132,37 @@ def _protect_token_value(token: str) -> str | None:
         return None
 
 
+def resolve_bearer_token(config: dict) -> str:
+    """Return the USABLE plaintext bearer from config, or "" if there is none.
+
+    Never mints and never writes. Unwraps a ``dpapi:`` value; passes a legacy plaintext
+    value through; returns "" when absent or undecryptable (different user/machine/corrupt).
+
+    Turkce not (2026-08-05, F-MCP-BEARER'in kok-neden fix'i): bu cozucu TEK olsun diye
+    ayrildi. Onceden sunucu get_or_create_bearer_token() ile DUZ token'i aliyor, ama
+    src/mcp_adapter/proxy.py bearer'i config'ten DOGRUDAN okuyordu -> DPAPI-SARMALI dizeyi
+    gonderiyordu (390 karakter, "dpapi:" onekli). Sunucu 43 karakterlik duz token'i bekledigi
+    icin karsilastirma HER ZAMAN basarisiz: canli olculdu, adaptorun her cagrisi
+    HTTP 401 "Gecersiz token". Ayni sirri iki yerde iki farkli sekilde cozmek hatanin
+    kendisiydi; artik tek giris noktasi burasi.
+    """
+    stored = config.get("server", {}).get("bearer_token", "")
+    if stored.startswith(_DPAPI_PREFIX):
+        try:
+            import base64
+            from .vault import encryption
+            return encryption.unprotect_data(
+                base64.b64decode(stored[len(_DPAPI_PREFIX):])).decode("utf-8")
+        except Exception:
+            return ""  # cozulemez -> cagiran taraf karar versin (uret / hata ver)
+    return stored
+
+
 def get_or_create_bearer_token(config: dict, config_path: Path) -> str:
     """Bearer token'i dondurur; YENI token uretilirse DPAPI-korumali saklanir (duz metin
     diske yazilmasin). Legacy duz-metin token geriye-uyum icin oldugu gibi okunur ve config
     SESSIZCE degistirilmez (sahibin izlenen kasa.toml'unu surpriz mutasyonla bozmayalim)."""
-    stored = config.get("server", {}).get("bearer_token", "")
-    if stored.startswith(_DPAPI_PREFIX):
-        # DPAPI-korumali saklanmis: coz ve duz token'i dondur.
-        try:
-            import base64
-            from .vault import encryption
-            return encryption.unprotect_data(base64.b64decode(stored[len(_DPAPI_PREFIX):])).decode("utf-8")
-        except Exception:
-            stored = ""  # cozulemez (baska kullanici/makine/bozuk) -> asagida yeniden uret
+    stored = resolve_bearer_token(config)
     if stored:
         # Legacy DUZ METIN token: dokunma, oldugu gibi kullan (config'i mutasyona ugratma).
         return stored

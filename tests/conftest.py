@@ -6,6 +6,11 @@ import os as _os
 _KASA_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 sys.path.insert(0, _KASA_ROOT)
 
+# Turkce not (G2 Host-guard): TestClient varsayilan olarak "Host: testserver" yollar.
+# Sunucudaki host-guard loopback-disi Host'u reddeder -> tum suiti kirardi. Test ortaminda
+# testserver'i acikca allow-list'e ekliyoruz (uretim varsayilani hala yalniz-loopback).
+_os.environ.setdefault("KASA_ALLOWED_HOSTS", "testserver")
+
 import pytest
 from tempfile import mkdtemp
 from shutil import rmtree
@@ -48,6 +53,42 @@ def server_client(tmp_vault):
         yield {"client": client, "token": token,
                "headers": {"Authorization": f"Bearer {token}"}}
     os.environ.pop("KASA_VAULT_PATH", None)
+
+@pytest.fixture(scope="function")
+def issue_token(server_client):
+    """Factory: mint a bearer token BOUND to one agent id, and return ready-made headers.
+
+    Turkce not — bu fixture NEDEN gerekti: kimlik baglamadan (F-IMP fix) once tek bir
+    paylasilan token vardi ve testler istedikleri agent_id'yi GOVDEDE beyan ediyordu.
+    Artik kimlik token'dan cozuluyor, dolayisiyla "browser gibi davran" demek icin
+    browser'a BAGLI bir token gerekiyor. Bu, testleri zayiflatmaz -- guclendirir:
+    eskiden test, uretimde var olmayan bir yoldan geciyordu (beyan et ve gec);
+    simdi sahibin gercekte kullandigi yoldan geciyor (token uret, onunla cagir).
+    """
+    import hashlib
+    import secrets as _secrets
+    import time as _time
+
+    srv = importlib.import_module("src.mcp_server.server")
+
+    def _issue(agent_id: str) -> dict:
+        token = _secrets.token_urlsafe(32)
+        # TAZE baglanti: VAULT_INSTANCE'in baglantisi TestClient'in lifespan thread'inde
+        # acildi ve sqlite baglantilari thread'e bagimlidir. Sahibin CLI'si de zaten ayri
+        # bir surecten yazar -> bu, uretimdeki yolun birebir taklidi.
+        import sqlite3
+        conn = sqlite3.connect(srv.VAULT_INSTANCE.db_path, timeout=5.0)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO agent_tokens (agent_id, token_hash, created_at) VALUES (?, ?, ?)",
+                (agent_id, hashlib.sha256(token.encode("utf-8")).hexdigest(), _time.time()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return {"Authorization": f"Bearer {token}"}
+
+    return _issue
 
 @pytest.fixture(scope="function")
 def clean_tool_def():

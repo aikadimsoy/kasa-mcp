@@ -178,14 +178,20 @@ def run():
             })
         
     except Exception as e:
+        # OLCULDU 2026-08-05 (SECBENCH-SILENT-SKIP): burasi SKIP/info yaziyordu.
+        # Bu bloga dusuldugunde CRYPTO-KDF, CRYPTO-ATREST ve CRYPTO-DPAPI de hic
+        # eklenmemis oluyor -- yani bes kripto kontrolunun dordu sessizce kayboluyor
+        # ve geriye "info" seviyesinde tek bir satir kaliyordu. Rapor temiz gorunuyordu.
+        # ERROR/critical: bir delik BULMADIK, BAKAMADIK. run.py'deki kapsam kapisi
+        # eksik kalan digerlerini ayrica ERROR olarak ekler.
         results.append({
             "id": "CRYPTO-EXPORT",
             "category": "crypto",
-            "title": "Prove vault crypto properties (Export)",
-            "status": "SKIP",
-            "severity": "info",
-            "evidence": str(e),
-            "remediation": ""
+            "title": "Prove vault crypto properties (Export) - crypto block aborted",
+            "status": "ERROR",
+            "severity": "critical",
+            "evidence": f"{type(e).__name__}: {e}",
+            "remediation": "Kripto blogu yarida kesildi; bu kategoride olculmemis kontroller var."
         })
     
     finally:

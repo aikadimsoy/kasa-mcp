@@ -4,4 +4,12 @@ pydantic>=2.0.0
 PyQt5>=5.15.0
 cryptography>=42.0.0
 # mcp: YALNIZ src/mcp_adapter stdio sureci icin (MIT lisans); exe'ye paketlenmez.
-mcp>=1.2
+#
+# Turkce not (2026-08-05, olculdu): ust sinir ZORUNLU. Onceki `mcp>=1.2` bugun 2.0.0'a
+# cozuluyor ve 2.0 `FastMCP`'yi kaldirdi: `mcp.server.fastmcp` modulu YOK, sinif
+# `mcp.server.mcpserver.MCPServer` olarak yeniden adlandirildi. Yani temiz bir kurulumda
+# src/mcp_adapter/__main__.py ModuleNotFoundError ile IMPORT bile edemiyordu.
+# Testler bunu yakalamadi cunku tests/test_mcp_adapter.py yalniz proxy.py'yi (SDK'siz
+# cekirdek) ice aktarir; SDK kablolamasinin kapsami sifir. 2.x'e gecis ayri ve olculmus
+# bir is olmali (MCPServer.tool dekoratoru duruyor, gecis yeniden-adlandirma boyutunda).
+mcp>=1.2,<2

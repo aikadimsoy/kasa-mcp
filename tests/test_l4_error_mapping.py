@@ -31,8 +31,10 @@ def _auth(srv):
 
 def _post_profile_read(srv, client):
     with client:
+        # agent_id beyani KALDIRILDI (kimlik baglama sonrasi): paylasilan token artik
+        # "tester" kimligini soyleyemez, 403 alirdi ve istek profile_read'e ULASMAZDI.
+        # Bu dosya hata->HTTP eslemesini olcuyor; olcum icin cagrinin araca varmasi sart.
         return client.post("/v1/execute_tool", headers=_auth(srv), json={
-            "agent_id": "tester",
             "tool_calls": [{"tool_name": "profile_read", "parameters": {"scope": "user.x"}}],
         })
 

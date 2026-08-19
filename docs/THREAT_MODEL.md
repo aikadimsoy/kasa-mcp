@@ -43,7 +43,7 @@ Savunma: fingerprint tutarliligi (L3 B1/B4) + veri-komut ayrimi.
 - Bellekteki duz metin swap/hibernate ile pagefile'a dusebilir — Python'da pratik mitigasyon yok.
 - profile.provenance (event-ID referanslari) L2'de plaintext kalir → hangi olaylardan turedigi gorulebilir (linkage sizintisi); dusuk hassasiyet + sicak-yol maliyeti gerekcesiyle kabul.
 - Sorgulanan metadata kolonlari (profile.key, events.ttl_expiry/distilled/source, audit.timestamp/agent_id/action/*_hash, permissions.*) L2'de plaintext kalir — sorgu/indeks/ hash-zinciri bunlara bagli; bilincli sinir.
-- (L1 tasarim notu) `agent_id` hala client-asserted (yalniz "system" rezerve) — bir ajan baska agent_id iddia edebilir. Kalici cozum: per-agent token / token->agent_id baglama; simdilik bilincli reziduel, izleniyor.
+- ~~(L1 tasarim notu) `agent_id` hala client-asserted~~ — **KAPANDI 2026-08-05.** Adi konan kalici cozum (per-agent token / token->agent_id baglama) kuruldu: kimlik `agent_tokens` uzerinden token'dan cozuluyor, govdedeki beyan yalnizca iddia, celisirse 403. Gercek sunucuya karsi 7/7 kontrol, pozitif ve negatif (`_orch/redteam/fimp_live_verify.py`). **Kalan reziduel bu satirin ustundeki A-sinifiyla ayni:** kimlik token'a baglidir, dolayisiyla vault dosyasini okuyabilen ayni-kullanici malware token uretebilir — yani bu, ayri bir aciklik degil, DPAPI satiriyla ayni bilincli sinirin bir baska yuzudur.
 
 ## L2 AT-REST KARARI OZETI:
 Neden hibrit app-layer AES-GCM, neden SQLCipher DEGIL: bu makinede SQLCipher wheel yok + C derleyici yok (infeasible) ve ampirik olarak gereksiz (icerik kolonunda tek yapisal filtre forget()'in soguk-yol LIKE'i). Sifrelenen kolonlar: profile.value, events.content, audit.details. forget() decrypt-scan'e, audit encrypt-then-hash'e yeniden tasarlanir.

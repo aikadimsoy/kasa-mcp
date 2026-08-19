@@ -25,6 +25,8 @@ CREATE_EVENTS_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp);
 """
 
+
+
 # DEBI-1 dedup arama indeksi. ALL_INDEXES'e EKLENMEZ: eski DB'lerde content_hash kolonu
 # ALTER-migration ile gelir; indeks migration SONRASI database._init_schema'da kurulur.
 CREATE_EVENTS_HASH_INDEX = """
@@ -39,6 +41,7 @@ CREATE TABLE IF NOT EXISTS profile (
     value TEXT NOT NULL,
     provenance TEXT NOT NULL, -- JSON array of event IDs
     supersedes INTEGER,       -- önceki versiyonun satır ID'si
+    weight REAL NOT NULL DEFAULT 1.0, -- KORTEX güven skoru (0.0 - 1.0 arası)
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );
@@ -46,6 +49,22 @@ CREATE TABLE IF NOT EXISTS profile (
 
 CREATE_PROFILE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_profile_key ON profile (key);
+"""
+
+# Karantina (Faz-2 / G3 / ASI06): scope-gecerli AMA supheli (enjekte gibi) bir profil yazimi
+# CANLIYA girmez; burada TUTULUR -> sahip inceleyip release_quarantined ile serbest birakir.
+# value at-rest AES-GCM sifreli (profile.value ile ayni AAD); agent_id atif, reason ise
+# deterministik bayrak nedeni. Iddia: "onleme" degil "tespit + karantina + atif".
+CREATE_PROFILE_QUARANTINE_TABLE = """
+CREATE TABLE IF NOT EXISTS profile_quarantine (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,        -- AES-GCM encrypted (AAD = profile|value|key)
+    provenance TEXT NOT NULL,   -- JSON array of event IDs (lineage)
+    agent_id TEXT NOT NULL,     -- yazimi deneyen ajan (attribution)
+    reason TEXT NOT NULL,       -- karantina nedeni (deterministik bayrak)
+    created_at REAL NOT NULL
+);
 """
 
 # İzinler (Permissions): Ajanların hangi kapsamlara erişebileceğini belirler.
@@ -69,7 +88,8 @@ CREATE TABLE IF NOT EXISTS audit (
     action TEXT NOT NULL, -- e.g., 'profile_read', 'forget'
     details TEXT, -- JSON blob with action parameters and result summary
     previous_hash TEXT NOT NULL, -- SHA-256 of the previous audit entry
-    entry_hash TEXT UNIQUE NOT NULL -- SHA-256 of this entry (timestamp + ... + previous_hash)
+    entry_hash TEXT UNIQUE NOT NULL, -- SHA-256 of this entry (timestamp + ... + previous_hash)
+    signature TEXT -- Ed25519(sign_key, entry_hash) hex; NULL for legacy/unsigned rows (Faz-1)
 );
 """
 
@@ -87,21 +107,67 @@ CREATE TABLE IF NOT EXISTS audit_checkpoint (
     created_at REAL NOT NULL,
     upto_id INTEGER NOT NULL, -- muhurlenen son audit satirinin id'si
     upto_hash TEXT NOT NULL, -- muhurlenen son audit satirinin entry_hash'i
-    entry_count INTEGER NOT NULL -- muhur anindaki kapsanan kayit sayisi
+    entry_count INTEGER NOT NULL, -- muhur anindaki kapsanan kayit sayisi
+    merkle_root TEXT -- SHA-256 Merkle root of covered entry_hashes (Faz-1); NULL for legacy
 );
+"""
+
+# Kör İndeks (Blind Indexing) tablosu: Şifreli events üzerinde O(1) hızında arama yapabilmek için.
+CREATE_SEARCH_INDEX_TABLE = """
+CREATE TABLE IF NOT EXISTS search_index (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    word_hash TEXT NOT NULL, -- HMAC(word)
+    FOREIGN KEY(event_id) REFERENCES events(id) ON DELETE CASCADE
+);
+"""
+
+CREATE_SEARCH_HASH_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_search_word_hash ON search_index (word_hash);
+"""
+
+# Ajan kimlik bagi (F-IMP kok-neden fix): bir token'i BIR ajan kimligine baglar.
+#
+# SEBEP (olculdu, docs/MCP_CANLI_TEST_EYLEM_PLANI_2026-08-02.md §F-IMP): eskiden tek bir
+# paylasilan bearer token vardi ve agent_id ISTEK GOVDESINDEN geliyordu. Token hangi ajana
+# ait oldugunu BILMEDIGI icin dogrulanamiyordu; token sahibi agent_id="browser" diyip o
+# kimligin iznini devralabiliyordu (event_ingest -> HTTP 200). Ayni kok neden hiz sinirini
+# da deliyordu: kova beyan edilen kimlige anahtarlandigi icin donen kimlikle 150 istekte
+# 0 adet 429 uretiliyordu.
+#
+# token_hash NEDEN duz SHA-256 (yavas KDF degil): token'lar `secrets` ile uretilen
+# yuksek-entropili rastgele dizelerdir (parola DEGIL). Yavas KDF'in amaci dusuk-entropili
+# sirlarda sozluk saldirisini pahalilastirmaktir; 256-bit entropide sozluk saldirisi diye
+# bir sey yoktur. Buradaki hash'in isi gizlilik degil ARAMA: diskte duz token tutmamak.
+CREATE_AGENT_TOKENS_TABLE = """
+CREATE TABLE IF NOT EXISTS agent_tokens (
+    agent_id TEXT PRIMARY KEY, -- token'in BAGLI oldugu kimlik (istemci beyani DEGIL)
+    token_hash TEXT NOT NULL UNIQUE, -- SHA-256(token); duz token asla saklanmaz
+    created_at REAL NOT NULL,
+    revoked_at REAL -- NULL = etkin
+);
+"""
+
+CREATE_AGENT_TOKENS_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens (token_hash);
 """
 
 # Tüm DDL komutlarını bir listede topla
 ALL_TABLES = [
     CREATE_EVENTS_TABLE,
     CREATE_PROFILE_TABLE,
+    CREATE_PROFILE_QUARANTINE_TABLE,
     CREATE_PERMISSIONS_TABLE,
     CREATE_AUDIT_TABLE,
     CREATE_AUDIT_CHECKPOINT_TABLE,
+    CREATE_SEARCH_INDEX_TABLE,
+    CREATE_AGENT_TOKENS_TABLE,
 ]
 
 ALL_INDEXES = [
     CREATE_EVENTS_INDEX,
     CREATE_PROFILE_INDEX,
     CREATE_AUDIT_INDEX,
+    CREATE_SEARCH_HASH_INDEX,
+    CREATE_AGENT_TOKENS_INDEX,
 ]

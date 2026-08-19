@@ -20,6 +20,10 @@ from .audit import AuditChain
 KEY_FILE_NAME = ".vaultkey"
 # Parola-KDF tuzu (opsiyonel parola katmani aktifse) + iterasyon sayisi.
 SALT_FILE_NAME = ".vaultsalt"
+# Faz-1: audit zinciri Ed25519 imza anahtari (DPAPI-korumali seed). Public key export
+# edilebilir -> audit satirlari uretici surece GUVENMEDEN dogrulanabilir. Bu dosya .vaultkey
+# gibi diskte KALMALI: silinirse yeni anahtar cifti uretilir ve eski imzalar dogrulanamaz.
+SIGN_KEY_FILE_NAME = ".auditsignkey"
 PBKDF2_ITERATIONS = 200_000  # PBKDF2-HMAC-SHA256 tur sayisi (offline brute-force maliyeti)
 
 class Vault:
@@ -37,8 +41,10 @@ class Vault:
         self.db_path = os.path.join(vault_path, "kasa.db")
         self.key_path = os.path.join(vault_path, KEY_FILE_NAME)
         self.salt_path = os.path.join(vault_path, SALT_FILE_NAME)
+        self.sign_key_path = os.path.join(vault_path, SIGN_KEY_FILE_NAME)
         self._password = vault_password
         self._db_key = self._get_or_create_db_key()
+        self._audit_signing_key = self._get_or_create_audit_signing_key()
         
         self.conn = None
         self.audit_chain = None
@@ -80,6 +86,33 @@ class Vault:
         with open(self.salt_path, "wb") as f:
             f.write(salt)
         return salt
+
+    def _get_or_create_audit_signing_key(self):
+        """Ed25519 private key for audit signatures, from a DPAPI-protected 32-byte seed.
+
+        Turkce not (Faz-1): hash-zinciri depo-ICI kurcalamayi yakalar; Ed25519 imza ise
+        her satiri URETICIDEN BAGIMSIZ dogrulanabilir kilar (public key ile). Private seed
+        .vaultkey ile ayni sekilde DPAPI ile korunur (aynı-OS kullanicisi imzalar). Public
+        key gizli DEGIL: audit_public_key_hex() ile disariya verilip bagimsiz dogrulama yapilir.
+        """
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
+        if os.path.exists(self.sign_key_path):
+            with open(self.sign_key_path, "rb") as f:
+                seed = encryption.unprotect_data(f.read())
+        else:
+            seed = Ed25519PrivateKey.generate().private_bytes(
+                serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
+                serialization.NoEncryption())
+            with open(self.sign_key_path, "wb") as f:
+                f.write(encryption.protect_data(seed))
+        return Ed25519PrivateKey.from_private_bytes(seed)
+
+    def audit_public_key_hex(self) -> str:
+        """Hex-encoded Ed25519 public key — share this to verify audit signatures independently."""
+        from cryptography.hazmat.primitives import serialization
+        return self._audit_signing_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
 
     def rotate_db_key(self) -> dict:
         """Cell-crypt anahtarini DONDURUR (on-demand re-key): yeni ham anahtar uret, tum K1:
@@ -192,7 +225,8 @@ class Vault:
 
         self._init_schema()
         # L2: audit.details at-rest sifreleme icin _db_key gecilir (encrypt-then-hash).
-        self.audit_chain = AuditChain(self.conn, key=self._db_key)
+        # Faz-1: Ed25519 signing_key -> her audit satiri imzalanir (bagimsiz dogrulanabilir).
+        self.audit_chain = AuditChain(self.conn, key=self._db_key, signing_key=self._audit_signing_key)
 
     def _init_schema(self):
         """Veritabanı şemasını ve indekslerini oluşturur."""
@@ -210,6 +244,11 @@ class Vault:
             "ALTER TABLE events ADD COLUMN content_hash TEXT",
             "ALTER TABLE events ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE events ADD COLUMN last_seen REAL",
+            # Faz-1: audit imza + Merkle kolonlari (eski DB'lerde ekle; NULL = legacy/unsigned)
+            "ALTER TABLE audit ADD COLUMN signature TEXT",
+            "ALTER TABLE audit_checkpoint ADD COLUMN merkle_root TEXT",
+            # KORTEX Decay (Çürüme) - Güven skoru (weight) eklenmesi
+            "ALTER TABLE profile ADD COLUMN weight REAL DEFAULT 1.0",
         ):
             try:
                 self.conn.execute(migration)

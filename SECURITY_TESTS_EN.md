@@ -2,11 +2,13 @@
 
 This document contains the list of empirical security tests, testing methodologies, and objectives implemented on the Kasa (Vault) system. The Kasa project does not only address autonomous agent (LLM) threats; it pursues a layered "Defense-in-Depth" approach.
 
-> **Measurement stamp (2026-08-03).** This project's rule is: *nothing is sealed until it is measured.*
+> **Measurement stamp (2026-08-05).** This project's rule is: *nothing is sealed until it is measured.*
 > Every item below carries the measurement it rests on (file:line or a `docs/` stamp); a claim without
-> a measurement is not written at all. The current security benchmark verdict is
-> **"NOT READY FOR RELEASE"** — 21 checks: **18 PASS · 1 FAIL · 2 WARN**
-> (`docs/SECURITY_BENCHMARK.md`, commit `2dfda9e`). Open findings and known limits are listed in
+> a measurement is not written at all. The current security benchmark reads 21 checks:
+> **21 PASS · 0 FAIL · 0 WARN** (`docs/SECURITY_BENCHMARK.md`, commit `5a703cd`) and stamps the word
+> *release candidate*. **That word is the bench's, not the project's** — it means no check in a narrow
+> suite fails, while finding F-POISON is open and that suite contains no check for it
+> (`docs/SECURITY_BENCH_LIMITS.md`). Open findings and known limits are listed in
 > `docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md` §4 and §7. Nothing in this document should be read
 > as "proven / unbreakable / 100% secure".
 

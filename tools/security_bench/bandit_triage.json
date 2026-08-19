@@ -1,0 +1,98 @@
+{
+  "_aciklama": "DENETLENMIS Bandit bulgulari. Her girdi (test_id, path, count) ile anahtarlanir ve GEREKCELIDIR. SCAN-BANDIT bu girdileri ham Bandit ciktisindan DUSER; kalan her sey 'denetlenmemis' sayilir ve WARN uretir.",
+  "_neden_count_var": "Anahtar yalnizca (test_id, path) olsaydi, AYNI dosyada acilan YENI bir bulgu sessizce gizlenirdi -- yani triyaj bir kor nokta yaratirdi. count, o dosyada o test icin KAC bulgunun denetlendigini soyler. Sayi artarsa fazlasi denetlenmemis olarak yuzeye cikar. Satir numarasiyla anahtarlamadik cunku satirlar her duzenlemede kayar ve triyaj kendiliginden bayatlardi.",
+  "_negatif_vaka": "Bir girdiyi silmek o bulgulari geri getirir. count'u dusurmek fazlasini yuzeye cikarir. Yeni bir dosyada ayni test_id ciksa da denetlenmemis kalir. Test: tests/test_bandit_triage.py",
+  "_olcum": "2026-08-05, bandit -r src: 13 MEDIUM, 0 HIGH. Uc aile, hepsi kod okunarak tek tek incelendi; asagida her biri icin dosya:satir kaniti var. B608 ailesi icin ayrica negatif kontrol testi yazildi -- 'parametrelidir, guvenlidir' bir IDDIADIR ve iddia olcum ister.",
+  "triage": [
+    {
+      "test_id": "B608",
+      "path": "src/distill/engine.py",
+      "count": 2,
+      "verdict": "yanlis-pozitif",
+      "reason": "SQL dizesine giren TEK sey '?' yer tutuculari: ','.join(['?'] * len(ids)). Hicbir kullanici verisi dizeye girmiyor, degerler parametre olarak baglaniyor. Bandit bir SQL dizesi uzerinde .format()/f-string gordugu anda NE enterpole edildigine bakmadan isaretler. Ayrica 242. satirin hemen ustunde tip kapisi var: 'if not all(isinstance(id, int) for id in provenance_event_ids)'. Kalan risk enjeksiyon degil, yer-tutucu sayisinin sismesi (DoS) -- ve id listesi onceki sorgunun satirlarindan geliyor.",
+      "evidence": "engine.py:242 (SELECT COUNT(*) ... WHERE id IN (...)), engine.py:275 (UPDATE events SET distilled=1 WHERE id IN (...))",
+      "negative_control": "tests/test_bandit_triage.py::test_NEGATIVE_sql_injection_through_id_lists_does_not_execute"
+    },
+    {
+      "test_id": "B608",
+      "path": "src/mcp_server/tools.py",
+      "count": 2,
+      "verdict": "yanlis-pozitif",
+      "reason": "Ayni desen: placeholders = ','.join('?' * len(match_ids)) ve degerler baglaniyor. match_ids/delete_ids ONCEKI bir sorgunun dondurduğu satir kimlikleridir, yani sqlite'in kendi urettigi tam sayilar; disaridan gelen bir dize bu listeye giremez.",
+      "evidence": "tools.py:260 (forget -> DELETE FROM events WHERE id IN (...)), tools.py:393 (prune -> ayni desen)",
+      "negative_control": "tests/test_bandit_triage.py::test_NEGATIVE_sql_injection_through_id_lists_does_not_execute"
+    },
+    {
+      "test_id": "B104",
+      "path": "src/desktop/preflight.py",
+      "count": 1,
+      "verdict": "yanlis-pozitif",
+      "reason": "Burada hicbir sey bir arayuze BAGLANMIYOR. Satir bir WebView2 surum kontrolu: 'if data and str(data) not in (\"\", \"0.0.0.0\")' -- registry'den okunan bir DEGERI karsilastiriyor. B104 kurali '0.0.0.0' dizesini nerede gecerse gecsin isaretler. Gercek bag noktasi baska yerdedir ve 127.0.0.1'dir; onu AUTHZ-BIND kontrolu olcuyor.",
+      "evidence": "preflight.py:63"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/agent/harness.py",
+      "count": 2,
+      "verdict": "kabul-edilen-kalinti",
+      "reason": "urlopen file:// ve ftp:// semalarini da kabul ettigi icin Bandit her kullanimini isaretler. Buradaki URL OLLAMA_BASE modul sabitinden gelir (env/config), sayfa iceriginden veya ajan girdisinden DEGIL. Kalinti durustce: env/config'i yazabilen biri zaten surec ortamina sahiptir = dusman sinifi A4, tasarimla KAPSAM DISI (docs/THREAT_MODEL.md). Bu bir 'guvenli' beyani degil, kapsam beyanidir.",
+      "evidence": "harness.py:61 (f'{OLLAMA_BASE}/api/tags'), harness.py:87"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/browser/browser_window.py",
+      "count": 2,
+      "verdict": "yanlis-pozitif",
+      "reason": "Iki URL de KODA GOMULU sabit dize: 'http://localhost:8000/v1/ingest' (satir 1101) ve 'http://localhost:11434/api/tags' (satir 1176). Hicbir degisken enterpole edilmiyor, dolayisiyla sema degistirilemez. Bu ONEMLI cunku 1108'deki istek bearer token TASIYOR -- URL saldirgan kontrolunde olsaydi token sizardi; sabit oldugu icin sizamaz.",
+      "evidence": "browser_window.py:1100-1101, browser_window.py:1176"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/desktop/launch.py",
+      "count": 1,
+      "verdict": "yanlis-pozitif",
+      "reason": "URL f'http://127.0.0.1:{port}/' -- sema ve host sabit, yalnizca port enterpole ediliyor ve o da surecin kendi actigi porttur. Saglik yoklamasi.",
+      "evidence": "launch.py:124-127"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/distill/engine.py",
+      "count": 1,
+      "verdict": "kabul-edilen-kalinti",
+      "reason": "self.ollama_url kurucudan gelir (config). Ustteki harness.py girdisiyle ayni gerekce: A4 kapsam disi. Not: POST GOVDESI guvenilmeyen metin icerir (sayfa icerigi) ama o govdedir, URL degil -- sema secimine etkisi yoktur.",
+      "evidence": "engine.py:183"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/distill/profile_enrich.py",
+      "count": 1,
+      "verdict": "kabul-edilen-kalinti",
+      "reason": "OLLAMA_URL modul sabiti (config/env). Ayni A4 gerekcesi.",
+      "evidence": "profile_enrich.py:85-86"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/mcp_adapter/proxy.py",
+      "count": 1,
+      "verdict": "kabul-edilen-kalinti",
+      "reason": "base_url config/env'den (KASA_SERVER_URL). Ayni A4 gerekcesi. Ek savunma: proxy.py loopback kontrolu urlparse().hostname kullanir (startswith DEGIL -- o duzeltme F-DASH turunde yapildi).",
+      "evidence": "proxy.py:136"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/vault/decay.py",
+      "count": 1,
+      "verdict": "kabul-edilen-kalinti",
+      "reason": "Localhost Ollama server URL. Asynchronous offline decay script for KORTEX judge.",
+      "evidence": "decay.py:43"
+    },
+    {
+      "test_id": "B310",
+      "path": "src/client.py",
+      "count": 1,
+      "verdict": "yanlis-pozitif",
+      "reason": "KasaClient SDK base_url parametresi (default 127.0.0.1:8000). Ajan istemcisinin kendi yerel KASA sunucusuna baglanmasi icin kullanilir.",
+      "evidence": "client.py:46"
+    }
+  ]
+}

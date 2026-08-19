@@ -49,6 +49,33 @@ def test_new_secret_in_non_allowlisted_path_trips():
     assert len(real) == 1 and suppressed == 0
 
 
+def test_bench_own_report_hex_is_suppressed_but_only_that_type():
+    """SCAN-SECRETS'in KENDI raporunu taramasi bir yazi-tura uretiyordu — bu onu sabitler.
+
+    Turkce not — NEDEN VAR (olculdu 2026-08-05): tezgah her kosumda
+    docs/security_bench_result.json'u yeniden yaziyor ve BIR SONRAKI kosum onu tariyor.
+    Dosyanin 9. satirindaki meta.config_hash 12 karakterlik bir SHA-256 kesitidir; degeri
+    her yapilandirma degisiminde degisir. Ayni kod ve ayni depoda yalnizca bu deger
+    f8b97a921348 -> 7ec93e4833a5 olarak degistiginde hukum 1 FAIL -> 0 FAIL'e dondu:
+    biri entropi esigini geciyor, oteki gecmiyor. Yani kontrol OLCUM degil, bir onceki
+    kosumun rastgele parmak izine bagli KURA idi -- ve kurayi kaybeden bir kosum "kritik
+    acik" diye raporlaniyordu. allowlist girdisi bunu deterministik yapar.
+
+    Bu test iki yonu birden tutar, cunku tek yonu tutmak yetmez: bastirma CALISMALI
+    (pozitif) ve ayni dosyada BASKA tipte gercek bir bulgu HALA gecmeli (negatif) --
+    aksi halde girdi, raporun tamamini kor bir noktaya cevirirdi.
+    """
+    allow = scan.load_allowlist()
+    report = {"docs/security_bench_result.json": [
+        {"type": "Hex High Entropy String", "line_number": 9},    # config_hash parmak izi
+        {"type": "Base64 High Entropy String", "line_number": 42},  # allowlist DISI -> real
+    ]}
+    real, suppressed = scan.filter_secrets(report, allow)
+    assert suppressed == 1, f"tezgahin kendi config_hash'i hala FAIL uretiyor: {real}"
+    assert len(real) == 1 and "Base64" in real[0], \
+        f"ayni dosyada farkli tip bir bulgu da gizlendi -- girdi cok genis: real={real}"
+
+
 def test_same_file_different_type_not_hidden():
     """Allowlist (path,type) ciftine baglidir: allowlist'li dosyada FARKLI tip yeni secret gizlenmemeli."""
     allow = scan.load_allowlist()

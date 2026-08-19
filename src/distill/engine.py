@@ -105,6 +105,7 @@ class DistillEngine:
     def run_batch(self, max_events=100):
         processed = 0
         facts_committed = 0
+        facts_quarantined = 0  # Faz-2 (G3): supheli distill yazimlari canliya girmez, karantinaya
         errors = []
 
         # Veritabanına bağlan; distilled kolonu yoksa güvenli şekilde ekle
@@ -195,7 +196,8 @@ class DistillEngine:
                 response_body = _call(base_payload)
             except Exception as e:
                 errors.append(f"Ollama cagirma hatasi: {e}")
-                return {'processed': len(events), 'facts_committed': facts_committed, 'errors': errors}
+                return {'processed': len(events), 'facts_committed': facts_committed,
+                'facts_quarantined': facts_quarantined, 'errors': errors}
 
         # Ollama yanıtından 'response' alanını al ve JSON array parse et
         try:
@@ -209,7 +211,8 @@ class DistillEngine:
                 raise ValueError("Model JSON array dondurmedi")
         except Exception as e:
             errors.append(f"Ollama yaniti parse hatasi: {e} | raw: {response_body[:200]}")
-            return {'processed': len(events), 'facts_committed': facts_committed, 'errors': errors}
+            return {'processed': len(events), 'facts_committed': facts_committed,
+                'facts_quarantined': facts_quarantined, 'errors': errors}
 
         # QC gate for each fact
         valid_facts = []
@@ -245,9 +248,20 @@ class DistillEngine:
                 valid_facts.append((fact['key'], json.dumps(_red_value), fact['provenance_event_ids']))
 
         # Upsert each valid fact into the profile table
+        from ..vault.quarantine import quarantine_reason
         for key, value, provenance_event_ids in valid_facts:
             try:
                 ts = time.time()
+                # Faz-2 (G3/ASI06): QC-gecen ama YAPISAL olarak ajana-emir gorunumundeki distill
+                # yazimi CANLIYA girmez -> profile_quarantine (tespit+karantina+atif, agent_id=distill).
+                # Ayni deterministik bayrak agent yolunda da kullanilir (kapsam butunlugu).
+                reason = quarantine_reason(value)
+                if reason:
+                    cursor.execute(
+                        "INSERT INTO profile_quarantine (key, value, provenance, agent_id, reason, created_at) VALUES (?,?,?,?,?,?)",
+                        (key, value, json.dumps(provenance_event_ids), "distill", reason, ts))
+                    facts_quarantined += 1
+                    continue
                 cursor.execute("""
                     INSERT OR REPLACE INTO profile (id, key, value, provenance, created_at, updated_at)
                     VALUES (NULL, ?, ?, ?, ?, ?)
@@ -266,7 +280,8 @@ class DistillEngine:
         conn.commit()
         conn.close()
 
-        return {'processed': len(events), 'facts_committed': facts_committed, 'errors': errors}
+        return {'processed': len(events), 'facts_committed': facts_committed,
+                'facts_quarantined': facts_quarantined, 'errors': errors}
 
     def run_nightly(self):
         self.run_batch(max_events=500)

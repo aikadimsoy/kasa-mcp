@@ -1,22 +1,22 @@
 {
   "meta": {
-    "date": "2026-08-04T21:45:39",
+    "date": "2026-08-19T16:54:28",
     "os": "Windows-11-10.0.26200-SP0",
     "os_build": "10.0.26200",
     "python": "3.14.5",
     "host": "DESKTOP-ABPQV0G",
-    "commit": "a77e3f7",
-    "config_hash": "f8b97a921348",
-    "webview2": "150.0.4078.105",
+    "commit": "8d6fa07",
+    "config_hash": "7ec93e4833a5",
+    "webview2": "151.0.4129.93",
     "tier": "base"
   },
   "verdict": "YAYIN-ADAYI",
   "counts": {
     "total": 21,
-    "PASS": 19,
+    "PASS": 21,
     "FAIL": 0,
     "ERROR": 0,
-    "WARN": 2,
+    "WARN": 0,
     "SKIP": 0
   },
   "results": [
@@ -39,10 +39,10 @@
     {
       "id": "AUTHZ-C5",
       "category": "authz",
-      "title": "valid token, agent_id='system', tool profile_read parameters {'scope':'user.name'}",
+      "title": "bound token for agent_id='system' (reserved identity claimed from the network)",
       "status": "PASS",
       "severity": "critical",
-      "evidence": "Status code: 403"
+      "evidence": "Status code: 403 (reserved-identity block exercised; body: {\"detail\":\"Ajan kimliği mevcut değil.\"})"
     },
     {
       "id": "AUTHZ-C7",
@@ -50,7 +50,7 @@
       "title": "valid token, agent_id='tester', tool_name='grant_permission'",
       "status": "PASS",
       "severity": "high",
-      "evidence": "Status code: 403 (kimlik baglama reddi)"
+      "evidence": "Status code: 404 (rota yok)"
     },
     {
       "id": "AUTHZ-C8",
@@ -58,15 +58,15 @@
       "title": "valid token, agent_id='tester', tool_name='_check_permission'",
       "status": "PASS",
       "severity": "high",
-      "evidence": "Status code: 403 (kimlik baglama reddi)"
+      "evidence": "Status code: 404 (rota yok)"
     },
     {
       "id": "AUTHZ-DENY",
       "category": "authz",
-      "title": "valid token, agent_id='unauthz_3089a5', tool profile_read parameters {'scope':'user.name'}",
+      "title": "bound token for agent_id='unauthz_9d0aea' with NO grants, tool profile_read",
       "status": "PASS",
       "severity": "critical",
-      "evidence": "Status code: 403"
+      "evidence": "Status code: 403; permission-broker refusal: True; body: {\"detail\":\"Ajan 'unauthz_9d0aea' için 'user.name' okuma izni yok.\"}"
     },
     {
       "id": "AUTHZ-BIND",
@@ -109,7 +109,7 @@
       "title": "Prove vault crypto properties (At Rest)",
       "status": "PASS",
       "severity": "critical",
-      "evidence": "canary absent from kasa.db + yan dosyalar (1 dosya, 81920 bytes; app-layer AES-GCM)",
+      "evidence": "canary absent from kasa.db + yan dosyalar (1 dosya, 94208 bytes; app-layer AES-GCM)",
       "remediation": ""
     },
     {
@@ -151,11 +151,11 @@
     {
       "id": "SCAN-BANDIT",
       "category": "scan",
-      "title": "Static Analysis with Bandit",
-      "status": "WARN",
+      "title": "Static Analysis with Bandit (triyaj-suzulmus)",
+      "status": "PASS",
       "severity": "high",
-      "evidence": "High: 0, Medium: 13; Found MEDIUM severity issues.",
-      "remediation": "pip install bandit; review src findings"
+      "evidence": "High: 0, Medium: 15 (15 denetlenmis, 0 denetlenmemis)",
+      "remediation": "Yeni bulgu gercekse kaynaktan kaldir; yanlis-pozitif veya kabul-edilen kalinti ise GEREKCESIYLE bandit_triage.json'a ekle (count'u da guncelle)."
     },
     {
       "id": "SCAN-PIPAUDIT",
@@ -172,16 +172,16 @@
       "title": "Secret Detection with Detect-Secrets (allowlist-suzulmus)",
       "status": "PASS",
       "severity": "critical",
-      "evidence": "0 denetlenmemis secret (24 allowlist'li bastirildi; gerekce: secret_allowlist.json)",
+      "evidence": "0 denetlenmemis secret (29 allowlist'li bastirildi; gerekce: secret_allowlist.json)",
       "remediation": "bearer_token: owner-only ACL uygulandi; kalan -> rotasyon + DPAPI-wrap/at-rest (owner-gated). Yeni bulgu gercekse kaynaktan kaldir, fixture/FP ise gerekceyle secret_allowlist.json'a ekle."
     },
     {
       "id": "SCAN-BAK-HYGIENE",
       "category": "scan",
       "title": "No stray backups + bounded _bak_archive",
-      "status": "WARN",
+      "status": "PASS",
       "severity": "medium",
-      "evidence": "1 stray (excl _bak_archive): src/distill/engine.py.bak",
+      "evidence": "No stray backups; _bak_archive bounded (24/200)",
       "remediation": "Stray'i sil/tasi; _bak_archive icin retention (guard._BAK_KEEP) veya age-out"
     },
     {

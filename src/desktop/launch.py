@@ -170,12 +170,18 @@ def main() -> int:
         return 1
 
     import webview
-    from . import consent
+    from .. import consent   # cekirdege tasindi: dashboard'un desktop'a bagli olmamasi icin
     from .picker import PickerApi
 
     # Ilk acilis: kullanim sartlari kabul edilmemisse once /terms goster; kabul sonrasi JS
     # /dashboard'a yonlendirir. Kabul edilmisse dogrudan panoya gir.
     start_path = "/dashboard" if consent.is_accepted() else "/terms"
+    # F-DASH: owner token'i HTML'e ancak launch nonce'u tasiyan istekte gomulur. Nonce'u
+    # sunucu modulu uretti (surec-basina); tarayiciyi onunla aciyoruz. Ag istemcisi bu
+    # nonce'u bilemez -> tokensiz sayfa alir. terms.html kabul sonrasi redirect'i query'yi
+    # korur (window.location.search), boylece /dashboard'a gecerken nonce kaybolmaz.
+    _nonce = getattr(kasa_server, "_LAUNCH_NONCE", "")
+    start_path = f"{start_path}?k={_nonce}"
 
     # Native dosya/klasor secici (Ayarlar). PickerApi window'u SAKLAMAZ (webview.active_window()
     # ile lazy eris) -> pywebview js_api serialize'i WebView2 native grafini taramaz (kararlilik).

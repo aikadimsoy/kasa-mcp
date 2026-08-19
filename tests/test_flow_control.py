@@ -53,12 +53,13 @@ def test_event_dedup_resets_distilled_flag(tools, vault):
 
 # ---------- DEBI-0: rate limit ----------
 
-def test_rate_limit_returns_429(server_client):
+def test_rate_limit_returns_429(server_client, issue_token):
     srv = importlib.import_module("src.mcp_server.server")
     srv.RATE_LIMITER.capacity = 3
     srv.RATE_LIMITER.refill_per_sec = 0.0
     srv.RATE_LIMITER.reset()
-    client, headers = server_client["client"], server_client["headers"]
+    client = server_client["client"]
+    headers = issue_token("browser")   # kimlik artik token'dan cozulur (F-IMP fix)
     body = {"agent_id": "browser",
             "tool_calls": [{"tool_name": "event_ingest",
                             "parameters": {"source": "browser", "type": "page_view",
@@ -69,24 +70,41 @@ def test_rate_limit_returns_429(server_client):
     assert codes[3] == 429
 
 
-def test_rate_limit_bucket_is_per_agent(server_client):
+def test_rate_limit_bucket_is_per_agent(server_client, issue_token):
+    """Kovalar ajan basinadir -- ve ajan artik BEYAN degil, token'dan cozulen kimliktir.
+
+    Turkce not: bu testin anlami kimlik baglamayla DEGISTI. Eskiden tek token ile
+    govdedeki agent_id degistirilerek iki ayri kova elde ediliyordu; o yol tam olarak
+    hiz-siniri baypasinin kendisiydi (donen kimlikle 150 istekte 0 adet 429). Ayrimin
+    hala gecerli oldugunu gostermek icin artik IKI AYRI BAGLI TOKEN gerekiyor --
+    yani ayricalik sahibin bilerek urettigi token'dan geliyor, saldirganin beyanindan degil.
+    """
     srv = importlib.import_module("src.mcp_server.server")
     srv.RATE_LIMITER.capacity = 1
     srv.RATE_LIMITER.refill_per_sec = 0.0
     srv.RATE_LIMITER.reset()
-    client, headers = server_client["client"], server_client["headers"]
+    client = server_client["client"]
+    hdr_a = issue_token("agent_a")
+    hdr_b = issue_token("agent_b")
 
-    def call(agent_id):
+    def call(headers):
         return client.post("/v1/execute_tool", json={
-            "agent_id": agent_id,
             "tool_calls": [{"tool_name": "audit_read", "parameters": {}}]}, headers=headers)
 
-    first = call("agent_a")
-    second = call("agent_a")
-    other = call("agent_b")
+    first = call(hdr_a)
+    second = call(hdr_a)
+    other = call(hdr_b)
     assert first.status_code != 429
     assert second.status_code == 429   # agent_a kovasi bos
     assert other.status_code != 429    # agent_b kendi kovasindan tuketir
+
+    # NEGATIF KONTROL: ayni token ile BASKA bir kimlik beyan edip taze kova almak
+    # artik mumkun mu? Olmamali -- bu, duzeltilen kok nedenin ta kendisi.
+    spoof = client.post("/v1/execute_tool", json={
+        "agent_id": "agent_b",   # A'nin token'i, B'nin kimligi
+        "tool_calls": [{"tool_name": "audit_read", "parameters": {}}]}, headers=hdr_a)
+    assert spoof.status_code == 403, \
+        f"kimlik beyaniyla taze kova alinabildi -> hiz-siniri hala delik ({spoof.status_code})"
 
 
 # ---------- DEBI-2: audit checkpoint + arsiv ----------

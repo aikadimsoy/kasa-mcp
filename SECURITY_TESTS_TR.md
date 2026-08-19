@@ -2,10 +2,13 @@
 
 Bu belge, Kasa (Vault) sistemi üzerinde uygulanan ampirik güvenlik testlerinin, test yöntemlerinin ve ulaşılmak istenen hedeflerin listesini içermektedir. Kasa projesi sadece otonom ajan (LLM) güvenliğini değil, katmanlı bir savunma (Defense-in-Depth) yaklaşımını hedefler.
 
-> **Ölçüm damgası (2026-08-03).** Bu projenin kuralı: *ölçülene kadar mühürlenmez.* Aşağıdaki her
+> **Ölçüm damgası (2026-08-05).** Bu projenin kuralı: *ölçülene kadar mühürlenmez.* Aşağıdaki her
 > madde, dayandığı ölçümü (dosya:satır veya `docs/` damgası) yanında taşır; dayanağı olmayan iddia
-> yazılmaz. Güncel güvenlik tezgahı verdict'i **"YAYINA HAZIR DEĞİL"** — 21 kalemde
-> **18 PASS · 1 FAIL · 2 WARN** (`docs/SECURITY_BENCHMARK.md`, commit `2dfda9e`). Açık bulgular ve
+> yazılmaz. Güncel güvenlik tezgahı 21 kalemde **21 PASS · 0 FAIL · 0 WARN** okuyor
+> (`docs/SECURITY_BENCHMARK.md`, commit `fc40b10`) ve *yayın-adayı* damgası basıyor. **Bu kelime
+> tezgâhın, projenin değil** — dar bir takımda hiçbir kontrolün kalmadığı anlamına gelir, oysa
+> F-POISON bulgusu açık ve o takımda onu ölçen kontrol yok (`docs/SECURITY_BENCH_LIMITS.md`).
+> Açık bulgular ve
 > bilinen sınırlar `docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md` §4 ve §7'de listelidir.
 > Bu belgedeki hiçbir madde "kanıtlanmış / kırılamaz / %100 güvenli" anlamına gelmez.
 

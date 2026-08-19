@@ -76,3 +76,10 @@ docs/VSCODE_EKLENTI_FIZIBILITE.md
 # Eski kod anlik goruntuleri (browser_window.py kopyalari vb.) — kaynak degil, public
 # repoda gurultu. Diskte kalir; git izlemez.
 _bak_archive/
+
+# Yerel anahtarlar, gecici lab ve analiz ciktilari
+.auditsignkey
+_lab/
+.agents/
+scan_demo_result.md
+kasa_test_architecture_breakdown.md

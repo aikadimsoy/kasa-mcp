@@ -38,6 +38,7 @@ import urllib.request
 from . import gate
 from ..dashboard import stats
 from ..vault.redact import sanitize_untrusted_text
+from ..vault.quarantine import neutralize as _neutralize_injection
 
 OLLAMA_BASE = "http://127.0.0.1:11434"
 
@@ -106,12 +107,20 @@ def _run_tool(vault, name: str, args: dict) -> dict:
 
 
 def _prepare_result(result: dict) -> str:
-    """Araç sonucunu modele geri beslemeden ONCE: JSON serialize -> kirp -> delimiter-sanitize.
-    (Pano fonksiyonlari zaten maskeli; bu savunma-derinligi + injection kapisi.)"""
+    """Araç sonucunu modele geri beslemeden ONCE: JSON serialize -> kirp -> delimiter-sanitize
+    -> Faz-3 enjeksiyon-notrleme.
+    (Pano fonksiyonlari zaten maskeli; bunlar savunma-derinligi + injection kapisi.)
+
+    Faz-3 (CaMeL Quarantined-LLM izi): tool sonucundaki vault-serbest-metni araç-yetkili modele
+    donmeden ONCE deterministik olarak notrlenir -> enjeksiyon-kalibi metin modelin CEVABINI
+    yonlendiremez. Not: EYLEM kapisi degil (gate.validate_call her cagriyi zaten deterministik
+    keser); bu adim cevap-butunlugu icin savunma-derinligidir."""
     payload = json.dumps(result, ensure_ascii=False)
     if len(payload) > gate.MAX_RESULT_CHARS:
         payload = payload[:gate.MAX_RESULT_CHARS] + "…[truncated]"
-    return sanitize_untrusted_text(payload)
+    payload = sanitize_untrusted_text(payload)
+    payload, _inj_hits = _neutralize_injection(payload)
+    return payload
 
 
 def _extract_calls(msg: dict) -> list[tuple[str, object]]:

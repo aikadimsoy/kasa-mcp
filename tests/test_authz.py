@@ -30,7 +30,11 @@ def test_c8_private_methods_not_callable(server_client):
     """C8: _check_permission gibi private/allow-list disi metodlar isimle cagrilamamali."""
     c, h = server_client["client"], server_client["headers"]
     for name in ("_check_permission", "_db", "grant_permission"):
+        # agent_id BEYAN EDILMIYOR: kimlik baglamadan sonra uyusmayan bir beyan istegi
+        # 403 ile kimlik kapisinda durdurur ve arac gonderimine HIC ULASMAZ -- yani bu
+        # test olcmek istedigi seyi (allow-list disi isim cagirilamaz) olcemez olurdu.
+        # Beyansiz cagri, token'a bagli kimlikle gecer ve gercekten gonderim katmanini dener.
         r = c.post("/v1/ingest", headers=h, json={
-            "tool": name, "agent_id": "attacker", "params": {}})
+            "tool": name, "params": {}})
         assert r.status_code == 404, \
             f"C8 ACIK: '{name}' cagrilabildi -> {r.status_code} {r.text[:200]}"

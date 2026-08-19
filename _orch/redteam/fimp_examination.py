@@ -60,10 +60,13 @@ def run():
 
     # ---------- A) TABAN: browser taklidi ile yazma gercekten geciyor mu? ----------
     print(BOLD("A) TABAN — browser taklidi + event_ingest"))
-    code, body = _post(base, "/v1/ingest", token, {
+    a_code, a_body = _post(base, "/v1/ingest", token, {
         "agent_id": "browser", "tool": "event_ingest",
         "params": {"source": "adv", "type": "inject", "content": {"text": "attacker-was-here"}, "ttl_days": 5}})
-    print(f"   browser event_ingest -> HTTP {GREEN(str(code)) if code==200 else RED(str(code))}  {DIM(body[:70])}\n")
+    # 200 = taklit GECTI (saldirgan icin iyi) -> kirmizi. Blokaj -> yesil.
+    a_open = (a_code == 200)
+    a_identity_gate = ("uyu" in a_body and "kimlik" in a_body)  # kimlik kapisi mi reddetti?
+    print(f"   browser event_ingest -> HTTP {RED(str(a_code)) if a_open else GREEN(str(a_code))}  {DIM(a_body[:70])}\n")
 
     # ---------- B) BLAST RADIUS: browser BASKA neler yapabilir? ----------
     print(BOLD("B) BLAST RADIUS — browser taklidiyle DIGER araclar"))
@@ -81,21 +84,37 @@ def run():
         verd = GREEN("engellendi") if c == 403 else RED(f"GECTI ({c})")
         print(f"   browser -> {tool:<22s} HTTP {c}  {verd}")
     only_ingest = all(v == 403 for v in radius.values())
-    print("   => " + (GREEN("yariçap SINIRLI: yalniz events:write (inject).")
-                      if only_ingest else RED("yariçap GENIS: baska araclar da gecti!")) + "\n")
+    # UCUNCU DURUM (bu alette eksikti): A'da kimlik kapisi devredeyse, B'deki 403'lerin
+    # SEBEBI dar yariçap DEGIL, kimligin hic cozulememesidir. O halde bu kosum yariçap
+    # hakkinda hicbir sey olcmemistir -> "SINIRLI" demek yanlis-PASS olur.
+    if a_identity_gate:
+        b_state = "OLCULEMEDI"
+        print("   => " + YELLOW("yariçap OLCULEMEDI: 403'ler kimlik kapisindan geliyor, "
+                                "kapsam denetiminden degil.") + "\n")
+    elif only_ingest:
+        b_state = "SINIRLI"
+        print("   => " + GREEN("yariçap SINIRLI: yalniz events:write (inject).") + "\n")
+    else:
+        b_state = "GENIS"
+        print("   => " + RED("yariçap GENIS: baska araclar da gecti!") + "\n")
 
     # ---------- C) TIRMANMA: browser kendine yetki verebilir mi? ----------
     print(BOLD("C) TIRMANMA — browser yetki yukseltebilir mi?"))
     c1, _ = _post(base, ep, token, _exec_body("browser", "grant_permission", {"scope": "admin:forget"}))
+    # ESKI HATA: yalniz 404 "engellendi" sayiliyordu; kimlik kapisi eklendikten sonra ayni
+    # saldiri 404'e VARMADAN 403 aliyor ve alet bunu "GECTI!" diye kirmiziya boyuyordu.
+    # Yukselme yalnizca 200 ile GECER; hangi kapinin durdurdugu ayrica yazilir.
+    c1_where = {404: "PUBLIC_TOOLS disi", 403: "kimlik/kapsam kapisi", 401: "kimlik dogrulama"}.get(c1, "?")
     print(f"   browser grant_permission -> HTTP {c1}  " +
-          (GREEN("engellendi (PUBLIC_TOOLS disi)") if c1 == 404 else RED("GECTI!")))
+          (RED("GECTI!") if c1 == 200 else GREEN(f"engellendi ({c1_where})")))
     # batch ile kacak: [gecerli event_ingest, grant_permission]
     c2, _ = _post(base, ep, token, {"agent_id": "browser", "tool_calls": [
         {"tool_name": "event_ingest", "parameters": {"source": "s", "type": "t",
                                                      "content": {"text": "x"}, "ttl_days": 5}},
         {"tool_name": "grant_permission", "parameters": {"scope": "admin:forget"}}]})
     print(f"   batch [ingest, grant] -> HTTP {c2}  " +
-          (GREEN("grant yine 404") if c2 == 404 else RED(f"beklenmedik {c2}")) + "\n")
+          (RED("GECTI!") if c2 == 200 else GREEN(f"engellendi ({c2})")) + "\n")
+    c_escalated = (c1 == 200 or c2 == 200)
 
     # ---------- D) ASAGI AKIS: enjekte edilen olay ne oluyor? ----------
     print(BOLD("D) ASAGI AKIS — enjekte edilen olayin akibeti (redact + distill uygunlugu)"))
@@ -105,6 +124,11 @@ def run():
     c = _fresh(db)
     rows = c.execute("SELECT content, distilled FROM events WHERE source='evil'").fetchall()
     c.close()
+    # SESSIZ BOSLUK (bu alette vardi): rows bos oldugunda bu blok HIC calismiyor, hicbir sey
+    # basmiyordu -- ama ozet yine de "olay saklanir, sir maskeli" diyordu. Yani asagi akis
+    # olculmemisken olculmus gibi raporlaniyordu. Artik bos hal ACIKCA yazilir.
+    d_state = "OLCULEMEDI"
+    d_redacted = None
     if rows:
         stored = cell_crypt.decrypt_cell(rows[0]["content"], key, cell_crypt.aad_event())
         distilled = rows[0]["distilled"]
@@ -116,6 +140,11 @@ def run():
         print(f"   saklanan icerik (ilk 90) : {DIM(stored[:90])}")
         print("   => enjekte metin VERI olarak durur; sir maskeli; ama distilled=0 => "
               "damitma promptuna ULASABILIR (dolayli enjeksiyon yuzeyi).\n")
+        d_state = "SAKLANDI"
+        d_redacted = redacted
+    else:
+        print("   " + YELLOW("olay HIC yazilmadi -> asagi akis bu kosumda OLCULEMEDI.") +
+              " (yazma ustteki kapida durduysa beklenen hal)\n")
 
     # ---------- E) GENEL ILKE: sadece 'browser' mu, yoksa HER granted kimlik mi? ----------
     print(BOLD("E) GENEL ILKE — taklit sadece 'browser'a mi ozgu?"))
@@ -126,19 +155,39 @@ def run():
     print(f"   'reporting-bot' taklidi -> profile_read HTTP {c}")
     print(f"   sahibin profili SIZDI mi : " + (RED("EVET — 'GIZLI-SAHIP-ADI' okundu!") if leaked
           else GREEN("hayir")))
-    print("   => taklit 'browser'a OZGU DEGIL: sahibin izin verdigi HER agent_id taklit edilebilir.")
-    print("      browser varsayilan yazma verir; okuma/silme izni verilen bir ajan olsaydi, taklit")
-    print("      OKUMA/SILME de verirdi. Kok neden: izin agent_id DIZESINE bakiyor, kimlik dogrulanmiyor.\n")
+    # ESKI HATA: asagidaki uc satir SABIT metindi ve `c` / `leaked` ne olursa olsun basiliyordu.
+    # Genelleme bir OLCUM sonucudur, bir varsayim degil -> artik olculen degerden turer.
+    if leaked:
+        e_state = "GENEL-ACIK"
+        print("   => " + RED("taklit 'browser'a OZGU DEGIL: sahibin izin verdigi HER agent_id "
+                             "taklit edilebilir; burada OKUMA da sizdi."))
+        print("      Kok neden: izin agent_id DIZESINE bakiyor, kimlik dogrulanmiyor.\n")
+    else:
+        e_state = "KAPALI"
+        print("   => " + GREEN(f"ikinci bir granted kimlik ('reporting-bot') de taklit edilemedi "
+                               f"(HTTP {c}); sahibin profili okunmadi.") + "\n")
 
     # ---------- OZET ----------
     print(BOLD("=== INCELEME OZETI (olculmus) ==="))
-    print(f"  A taban       : browser taklidi event_ingest GECER (HTTP 200) — teyit.")
-    print(f"  B yariçap     : " + ("SINIRLI (yalniz events:write)" if only_ingest else "GENIS"))
-    print(f"  C tirmanma    : grant_permission {('404 engellendi' )} — kendine yetki VEREMEZ.")
-    print(f"  D asagi akis  : olay saklanir, sir maskeli, distilled=0 => damitmaya aday (enjeksiyon yuzeyi).")
-    print(f"  E genel ilke  : taklit HER granted kimlige uzanir; 'browser' yalniz varsayilan ornek.")
-    print(DIM("\n  Kok neden: agent_id istemci-beyanli + izin dizeye bakiyor. Cozum v1'de kapsam disi;")
-          + DIM(" v2 (named-pipe surec kimligi) bunu sirsiz kapatir.\n"))
+    # Her satir yukarida OLCULEN bir degiskenden turer. Sabit sonuc yazmak yasak:
+    # bu aletin ilk surumunde ozet blogu sabit metindi ve kod duzeldikten SONRA da
+    # "GECER (HTTP 200)" yazmaya devam etti; ayni kosumda soket 403 dondururken.
+    print(f"  A taban       : browser taklidi event_ingest -> HTTP {a_code} "
+          + (RED("GECER (acik)") if a_open else GREEN("REDDEDILDI"
+             + (" (kimlik kapisi)" if a_identity_gate else ""))))
+    print(f"  B yariçap     : {b_state}"
+          + ("  <- A'da kimlik kapisi devrede, bu kosum yariçap olcemez" if b_state == "OLCULEMEDI" else ""))
+    print(f"  C tirmanma    : grant_permission HTTP {c1} / batch HTTP {c2} -> "
+          + (RED("YUKSELDI") if c_escalated else GREEN("yukselme yok")))
+    print(f"  D asagi akis  : {d_state}"
+          + ("" if d_state == "OLCULEMEDI" else f" (sir maskeli={d_redacted})"))
+    print(f"  E genel ilke  : {e_state}")
+    if a_open:
+        print(DIM("\n  Kok neden: agent_id istemci-beyanli + izin dizeye bakiyor.\n"))
+    else:
+        print(DIM("\n  A/E kapali: kimlik artik token'dan cozuluyor (agent_tokens); govdedeki")
+              + DIM(" agent_id yalnizca bir BEYANDIR ve uyusmazsa 403 alir.")
+              + DIM("\n  SINIR: bu, ayni OS kullanicisi olarak calisan koda karsi bir sinir DEGILDIR.\n"))
 
     try:
         server.should_exit = True

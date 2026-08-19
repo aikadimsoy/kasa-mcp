@@ -1,5 +1,11 @@
 # Project KASA
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Status: research preview](https://img.shields.io/badge/status-research%20preview-orange.svg)](#-v01--research-preview--security-architecture-demo)
+[![Tests](https://img.shields.io/badge/tests-367%20passed%2C%201%20xfail-brightgreen.svg)](docs/REPRODUCE.md)
+[![Open findings](https://img.shields.io/badge/open%20findings-4-red.svg)](SECURITY.md)
+
 A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
 
 > ## ⚠️ v0.1 — Research Preview / Security Architecture Demo
@@ -15,20 +21,25 @@ A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
 > | | |
 > |---|---|
 > | Runs entirely locally | vault file, key and permission decisions never leave the machine |
-> | Encrypts *specific* fields | 3 columns, AES-256-GCM, AAD-bound — **not** the whole database |
+> | Encrypts *specific* fields **on the brokered write path** | 3 columns, AES-256-GCM, AAD-bound — **not** the whole database, and **not** on the distiller path: measured 2026-08-05, `profile.value` written by the distiller lands in **plaintext** (`_orch/redteam/distill_crypto_bypass.py`) |
 > | Limits tool authority in ordinary code | deterministic broker; the model is never the boundary |
 > | Keeps a hash-chained audit ledger | tamper and deletion detection both measured PASS |
-> | 233 tests pass | 2026-08-03 run, **in an isolated copy** that imports only from itself |
+> | Binds agent identity to the token | 7/7 live controls against a real server, positive **and** negative — `_orch/redteam/fimp_live_verify.py` |
+> | 367 tests pass | 2026-08-19 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers |
 >
 > **What is NOT claimed** — these are open, written down, and some are measured failures:
-> identity binding (`agent_id` is client-asserted and audit *attribution* is forgeable),
-> full at-rest encryption, egress control, and independent security audit. The KASA browser
-> ships **disabled** because of a known bridge-isolation defect. The project's own benchmark
-> currently records the verdict **not release-ready**.
+> full at-rest encryption, egress control, and independent security audit. A network caller can
+> no longer forge audit *attribution* (see above), but a **true** attribution still does not make
+> the attributed claim true — see finding F-POISON. The KASA browser
+> ships **disabled** because of a known bridge-isolation defect. The project's own benchmark now
+> stamps *release candidate* — **that is the bench's word, not this project's status**: it means
+> no check in a narrow suite fails, and that suite has no check at all for the adversary KASA is
+> built against.
 >
-> We publish our own negative results. The open findings are in
-> [`SECURITY.md`](SECURITY.md); the failing measurements are in
-> [`docs/SECURITY_BENCHMARK.md`](docs/SECURITY_BENCHMARK.md). Start there, not here.
+> We publish our own negative results, and every claim above has a command behind it.
+> **[`docs/REPRODUCE.md`](docs/REPRODUCE.md)** is the index: one row per claim, the command that
+> produces it, and what that command does *not* show. Open findings are in
+> [`SECURITY.md`](SECURITY.md). Start there, not here.
 
 ## The Problem
 
@@ -36,7 +47,7 @@ Current agentic browsers store persistent user memory in vendor clouds, posing s
 
 ## What KASA Does
 
-KASA is designed as a sovereign memory vault for Windows users: the vault file, the encryption key and the permission decisions all stay on the user's machine. *Complete* control is **not** claimed — the measured limits (client-asserted `agent_id`, unobserved egress, plain-text metadata columns) are named under Project Status below. It operates on the principle of "Agents come and go; your memory is yours." The system includes:
+KASA is designed as a sovereign memory vault for Windows users: the vault file, the encryption key and the permission decisions all stay on the user's machine. *Complete* control is **not** claimed — the measured limits (unobserved egress, plain-text metadata columns, and the fact that a correctly attributed write can still carry a false claim) are named under Project Status below. It operates on the principle of "Agents come and go; your memory is yours." The system includes:
 
 - A local Memory Vault that encrypts sensitive cells at rest with per-cell AES-256-GCM. Honest scope: encryption is cell-level over three columns, not whole-database — see Project Status below.
 - An MCP Server that exposes this vault to any agent with permission via a brokered protocol.
@@ -62,10 +73,17 @@ KASA's architecture comprises five key components:
 
 ## Security
 
-Every security claim in this repository is expected to name the measurement it rests on. The current
-evidence report is [`docs/SECURITY_BENCHMARK.md`](docs/SECURITY_BENCHMARK.md) (21 checks with
-per-check evidence strings), the per-test detail with explicit limits is
-[`SECURITY_TESTS_EN.md`](SECURITY_TESTS_EN.md), and an independent audit with open findings is
+Every security claim in this repository is expected to name the measurement it rests on.
+
+**Start with [`docs/REPRODUCE.md`](docs/REPRODUCE.md)** — it lists every claim, the command that
+reproduces it on your own machine, and what that command does *not* show. It also names what has
+**not** been measured, which is the part an index of evidence usually omits.
+
+Supporting material: the benchmark report is
+[`docs/SECURITY_BENCHMARK.md`](docs/SECURITY_BENCHMARK.md) (21 checks with per-check evidence
+strings) — read [`docs/SECURITY_BENCH_LIMITS.md`](docs/SECURITY_BENCH_LIMITS.md) before quoting a
+number from it; per-test detail with explicit limits is
+[`SECURITY_TESTS_EN.md`](SECURITY_TESTS_EN.md); the audit with open findings is
 [`docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md`](docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md).
 
 - **Red-team findings — what was measured, and what is still open.** Each line names its evidence;
@@ -79,11 +97,19 @@ per-check evidence strings), the per-test detail with explicit limits is
   - *MCP authorization* — the allow-list (`PUBLIC_TOOLS`), reserved-agent block and per-scope
     deny-by-default checks pass their measurements (`AUTHZ-*` checks in
     [`docs/SECURITY_BENCHMARK.md`](docs/SECURITY_BENCHMARK.md); `tests/test_agent_gate.py`).
-    **Still open:** `agent_id` is client-asserted, so a token holder can impersonate another
-    privileged agent id and audit attribution is forgeable — see the F-IMP finding in
-    [`SECURITY.md`](SECURITY.md) and
-    [`docs/MCP_CANLI_TEST_EYLEM_PLANI_2026-08-02.md`](docs/MCP_CANLI_TEST_EYLEM_PLANI_2026-08-02.md).
-    This is **not** closed.
+    **Closed (finding F-IMP).** `agent_id` used to arrive in the request body unverified, so a
+    token holder could claim another agent's identity and audit attribution was forgeable.
+    Identity is now resolved from the token; the body claim is only a claim and a mismatch is
+    refused. Measured 2026-08-05 against a **real** server, 7/7 controls — including the two that
+    matter together: the previously-measured attack (owner token claiming `browser` → was 200,
+    now **403**) *and* a positive control proving the gate is not a blanket refusal (a bound token
+    acting as itself completes a real write → **200**). The rate-limit bypass that shared this root
+    cause is gone with it: 300 requests with a rotating claimed id now produce **240 × HTTP 429**
+    where 150 requests once produced **zero**. Evidence: `_orch/redteam/fimp_live_verify.py`,
+    `_orch/redteam/fimp_live_result.json`, `tests/test_identity_binding.py` (15 tests).
+    **Limit:** identity is bound to a *token*, so it is exactly as strong as token secrecy — a
+    same-OS attacker who can read the vault can mint one, and that adversary class is out of scope
+    by design. And a correct attribution still does not make the attributed claim true (F-POISON).
   - *KASA browser bridge isolation* — **open, and the reason the browser ships disabled.** The
     pywebview `js_api` bridge lives in the visited page's JS context and page scripts are
     injected with no origin check, so any visited site can reach `window.pywebview.api.*`,
@@ -106,7 +132,7 @@ currently measured open — the evidence is linked from [`SECURITY.md`](SECURITY
 | Version | Goal | Closes |
 |---|---|---|
 | **v0.1** *(this release)* | Clean public repo, safe example config, limits stated plainly | — |
-| **v0.2** | **Verified process/agent identity** — resolve `agent_id` from the token, reject mismatches | F-IMP; makes audit *attribution* meaningful, and fixes the rate-limit bypass that shares its root cause |
+| **v0.2** ✅ *(done, measured 2026-08-05)* | **Verified agent identity** — `agent_id` resolved from the token, mismatches refused | F-IMP; makes audit *attribution* meaningful, and fixes the rate-limit bypass that shares its root cause. 7/7 live controls: `_orch/redteam/fimp_live_verify.py`. **Process** identity (OS-level, over a named pipe) remains a spike, not a build |
 | **v0.3** | **Default-deny egress + capability permissions** | "no egress control" |
 | **v0.3** | **Privileged UI outside page context** | the browser bridge isolation defect above |
 | **v0.4** | Attack testing, brakes and budgets | turns the red-team scripts into gates |
@@ -159,6 +185,63 @@ KASA exposes the following MCP tools for local use:
 
 - `profile_read(scope)`, `profile_write(fact)`, `forget(topic)`, `audit_read(range)`, `event_ingest`, `prune_expired_events`.
 
+## 90-Second Interactive Demo
+
+Run the standalone demonstration script to see KASA's Reference Monitor and Memory Quarantine block a prompt injection attack in real time:
+
+```powershell
+python demo_attack_defense.py
+```
+
+### What the Demo Shows
+- **WITHOUT KASA (Unprotected):** Prompt injection tricks an autonomous agent into exfiltrating sensitive credentials (`~/.ssh/id_rsa`) and poisoning persistent memory (**PWNED**).
+- **WITH KASA (Protected):** KASA's Reference Monitor intercepts tool execution (**DENIED - HTTP 403**), quarantines malicious memory writes (**QUARANTINED**), and records an Ed25519-signed, Merkle-chained audit log entry (**PROTECTED**).
+
+## 🛡️ KASA AI Agent Security Scanner (`kasa-scan`)
+
+Probe an MCP server or AI agent for a **small, named set** of agent-security failures and get a
+report that says what it could *not* measure:
+
+**What it actually measures** — four checks, by sending real requests to the target: unauthenticated
+access, forged `system` identity, deny-by-default scope, and whether an injection payload lands in
+live memory (the last one needs a write-scoped `--token`; without one it reports `SKIP`, not `PASS`).
+
+**What it does not measure** — outbound egress cannot be observed remotely, so that check is `SKIP`
+by default; `--self-test` exercises *this* install's own egress guard and says so on the line. If the
+target does not expose the endpoint, every check is `SKIP` and **no score is printed** — because a
+tool that scores an unreachable target invites the reader to mistake silence for safety. Exit code
+`2` means "nothing measured"; CI must not read it as green. The two-way tests behind these claims are
+in [`tests/test_scanner_cli.py`](tests/test_scanner_cli.py).
+
+```powershell
+# Scan your local agent or MCP server
+python -m tools.scanner.cli --url http://127.0.0.1:8000 --lang en
+```
+
+### GitHub Actions CI/CD Integration
+
+Add automated AI agent security scanning to your repository's `.github/workflows/agent-scan.yml`:
+
+```yaml
+name: Agent Security Scan
+on: [pull_request]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run KASA Agent Security Scanner
+        run: |
+          pip install -r requirements.txt
+          python -m tools.scanner.cli --url http://127.0.0.1:8000 --output-md scan_report.md || true
+      - name: Post Summary to GitHub PR
+        if: always()
+        run: cat scan_report.md >> $GITHUB_STEP_SUMMARY
+```
+
 ## Testing
 
 KASA uses pytest for testing. To run the tests, use:
@@ -168,22 +251,40 @@ pytest -q
 
 ## Project Status
 
-**Not release-ready — and the project says so itself.** The current benchmark stamp reads
-**"NOT READY FOR RELEASE"**: 21 checks, **18 PASS · 1 FAIL · 2 WARN**
-(`docs/SECURITY_BENCHMARK.md`, commit `2dfda9e`). The house rule is *nothing is sealed until it is
-measured*, so labels such as "hardened", "enterprise-grade" or "production-ready" are not used here —
-`docs/UI_UX_STANDARD.md` §2.6 forbids them until they are empirically measured.
+**Still not release-ready — and the reason is no longer a failing check.** The benchmark now
+records 21 checks, **21 PASS · 0 FAIL · 0 WARN** (`docs/SECURITY_BENCHMARK.md`, commit `5a703cd`,
+2026-08-05) and stamps the word *release candidate*. **That word is the bench's, not the
+project's.** It means no check in a narrow suite currently fails — while finding F-POISON below is
+open and the suite has **no check at all** for the adversary this project is built against. Read
+[`docs/SECURITY_BENCH_LIMITS.md`](docs/SECURITY_BENCH_LIMITS.md) before quoting any number from it.
+The house rule is *nothing is sealed until it is measured*, so labels such as "hardened",
+"enterprise-grade" or "production-ready" are not used here — `docs/UI_UX_STANDARD.md` §2.6 forbids
+them until they are empirically measured.
 
 - **Implemented and measured green:** the MVP-0 security core — vault + MCP server + brokered
   permissions + distillation + audit hash-chain. All 7 `AUTHZ-*` checks pass (including C5/C7/C8 and
   the `127.0.0.1` bind check), the 3 `AUDIT-*` chain/tamper checks pass, the 5 `CRYPTO-*` checks pass,
   both `FUZZ-*` checks pass, and the dependency audit reports 0 vulnerable dependencies.
-- **Measured red / amber:** `SCAN-SECRETS` **FAIL** — the bearer token is stored in plain text in
-  `kasa.toml`; an owner-only ACL is applied, rotation and DPAPI wrapping are still pending.
-  `SCAN-BANDIT` WARN (13 medium findings, untriaged) and `SCAN-BAK-HYGIENE` WARN.
+- **The suite is now entirely green, and that is the moment to be most careful.** Nothing amber
+  remains: the 13 Bandit MEDIUM findings were triaged one by one against the source, with the
+  reasoning for each written down in `tools/security_bench/bandit_triage.json`. Four were flagged
+  SQL-injection sites where the only thing interpolated is `?` placeholders — so a negative control
+  was written that drives the real `forget()` path with four SQL payloads and shows the tables
+  survive, plus a positive control proving `forget()` is not a silent no-op
+  (`tests/test_bandit_triage.py`). Five are `urlopen` sites whose URL comes from config or env,
+  which is **not** "safe" — it is adversary class A4, out of scope by design, and it is recorded as
+  an accepted residual rather than a clean bill.
+- **One number in that suite was a coin flip, and it is worth saying out loud.** `SCAN-SECRETS`
+  scans the bench's *own* previous report, whose `config_hash` fingerprint changes every time the
+  config does. Measured 2026-08-05: with identical code and repository, the value changing from
+  `f8b97a921348` to `7ec93e4833a5` moved the verdict from **1 FAIL** to **0 FAIL** — one trips the
+  entropy threshold, the other does not. It is now pinned deterministically, with a test holding
+  both directions (`tests/test_secret_scan_allowlist.py`). A green check whose colour depends on a
+  random fingerprint was never a measurement.
 - **Named open gaps**, measured in `docs/KASA_DENETIM_VE_PROJEKSIYON_2026-08-01.md`:
-  (a) `agent_id` is client-asserted and unverified, so the rate limiter can be bypassed and **audit
-  attribution is forgeable** (§4.1); (b) **egress is neither controlled nor observed** — the plan in
+  (a) *closed 2026-08-05* — identity is now bound to the token and the rate-limit bypass that shared
+  its root cause is gone (§4.1 superseded; evidence `_orch/redteam/fimp_live_verify.py`);
+  (b) **egress is neither controlled nor observed** — the plan in
   `docs/GUVENLIK_CIKIS_PLANI.md` is unbuilt (§4.4); (c) at-rest encryption is **cell-level over three
   columns**, not whole-database — metadata columns remain plain text (§1 and
   `docs/adr/0003-at-rest-sifreleme-boslugu.md`).

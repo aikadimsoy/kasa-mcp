@@ -72,6 +72,91 @@ def _webview2_version() -> str:
     return "n/a"
 
 
+#: Bu tezgahin KOSMASI GEREKEN kontrolleri. Bir SOZLESMEDIR, kozmetik degil.
+#:
+#: Turkce not — NEDEN VAR: bir raporun eksik bir kontrolu fark edebilmesi icin, o kontrolun
+#: BEKLENDIGINI bilmesi gerekir. Bu liste olmadan tezgah 21 satir yerine 15 satir uretir ve
+#: hem kendisi hem okuyucusu bunu "temiz" diye okur -- kaybolan yedi AUTHZ kontrolu hicbir
+#: yerde iz birakmaz. Yeni bir kontrol eklerken ID'sini BURAYA da eklemek zorunludur; bu bir
+#: yuk degil, kapinin ta kendisidir.
+EXPECTED_CHECK_IDS = frozenset({
+    "AUTHZ-TOKEN-MISSING", "AUTHZ-TOKEN-WRONG", "AUTHZ-C5", "AUTHZ-C7", "AUTHZ-C8",
+    "AUTHZ-DENY", "AUTHZ-BIND",
+    "CRYPTO-EXPORT", "CRYPTO-KDF", "CRYPTO-ATREST", "CRYPTO-DPAPI",
+    "AUDIT-VERIFY", "AUDIT-TAMPER-MODIFY", "AUDIT-TAMPER-DELETE",
+    "SCAN-BANDIT", "SCAN-PIPAUDIT", "SCAN-SECRETS", "SCAN-BAK-HYGIENE",
+    "FUZZ-NOAUTH", "FUZZ-EXECUTE",
+})
+
+_CATEGORY_OF = {"AUTHZ": "authz", "CRYPTO": "crypto", "AUDIT": "audit",
+                "SCAN": "scan", "FUZZ": "fuzz"}
+
+
+def loader_error_row(checker_name: str, exc: BaseException) -> dict:
+    """Bir kontrol MODULU cokerse uretilen satir.
+
+    Turkce not — OLCULDU 2026-08-05 (SECBENCH-SILENT-SKIP): bu satir eskiden
+    status="SKIP", severity="info" tasiyordu. verdict()'teki `unmeasured` suzgeci ise
+    status=="ERROR" + high/critical arar -> bir kontrol modulunun TAMAMEN cokmesi
+    hukmu hic degistirmiyordu: rapor "PASS", cikis kodu 0. Yani "yedi AUTHZ kontrolunun
+    hicbiri kosmadi" ile "yedisi de gecti" ayni ekrani uretiyordu.
+    Bir kategoriyi butunuyle kaybetmek "info" degildir; o kategoride HICBIR SEY olculmemistir.
+    """
+    return {
+        "id": f"{checker_name}-LOADER",
+        "category": ("audit" if checker_name.endswith("audit")
+                     else "authz" if checker_name.endswith("authz")
+                     else "crypto" if checker_name.endswith("crypto")
+                     else "fuzz" if checker_name.endswith("fuzz")
+                     else "scan"),
+        "title": "check module failed to load - NOTHING in this category was measured",
+        "status": "ERROR",
+        "severity": "critical",
+        "evidence": f"{type(exc).__name__}: {exc}",
+        "remediation": "fix module import; until then this category is UNMEASURED, not clean",
+    }
+
+
+def _coverage_gaps(results: list) -> list:
+    """Beklenip de KOSMAYAN kontroller icin ERROR satirlari uret.
+
+    ERROR/critical secilmesi bilerekdir: `unmeasured` suzgeci tam olarak bunu arar ve
+    cikis kodunu 3'e (kapsam eksik) cevirir. FAIL demedik cunku bir delik BULMADIK --
+    BAKAMADIK. Ikisini ayirmak bu tezgahin varlik sebebi.
+    """
+    seen = {r.get("id") for r in results}
+    gaps = []
+    for missing in sorted(EXPECTED_CHECK_IDS - seen):
+        gaps.append({
+            "id": missing,
+            "category": _CATEGORY_OF.get(missing.split("-", 1)[0], "scan"),
+            "title": "expected check did not run",
+            "status": "ERROR",
+            "severity": "critical",
+            "evidence": ("Bu kontrol EXPECTED_CHECK_IDS'te var ama sonuclarda YOK. "
+                         "Bir delik bulunmadi; BAKILAMADI."),
+            "remediation": "Kontrolun neden kaybolduğunu bul; ya da bilerek kaldirildiysa "
+                           "EXPECTED_CHECK_IDS'ten gerekcesiyle cikar.",
+        })
+    return gaps
+
+
+def verdict(results: list) -> tuple:
+    """(state, exit_code, blocking, unmeasured) -- main()'den ayrildi ki TEST EDILEBILSIN.
+
+    Turkce not: bu mantik eskiden main() icinde gomuluydu ve bu yuzden yalnizca tam bir
+    tezgah kosumuyla (~5 dakika, ag bagimli) sinanabiliyordu. Pratikte hic sinanmadi --
+    yukaridaki sessiz-SKIP hatasi da tam bu yuzden iki gun yasadi.
+    """
+    blocking = [r for r in results
+                if r.get('status') == 'FAIL' and r.get('severity') in ('critical', 'high')]
+    unmeasured = [r for r in results
+                  if r.get('status') == 'ERROR' and r.get('severity') in ('critical', 'high')]
+    state = ('FAIL' if blocking else 'UNVERIFIED' if unmeasured else 'PASS')
+    code = 1 if blocking else (3 if unmeasured else 0)
+    return state, code, blocking, unmeasured
+
+
 def main() -> int:
     try:
         if _KASA_ROOT not in sys.path:
@@ -97,16 +182,21 @@ def main() -> int:
                 if isinstance(module_results, list):
                     results.extend(module_results)
             except Exception as e:
-                results.append({
-                    "id": f"{checker.__name__}-LOADER",
-                    "category": "audit" if checker.__name__.endswith("audit") else "authz" if checker.__name__.endswith("authz") else "crypto" if checker.__name__.endswith("crypto") else "scan",
-                    "title": "check module failed to load",
-                    "status": "SKIP",
-                    "severity": "info",
-                    "evidence": str(e),
-                    "remediation": "fix module import"
-                })
-        
+                # OLCULDU 2026-08-05 (SECBENCH-SILENT-SKIP): burasi eskiden
+                # status="SKIP", severity="info" yaziyordu. Asagidaki `unmeasured`
+                # suzgeci ise status=="ERROR" + high/critical ariyor -> bir kontrol
+                # MODULU tamamen cokerse rapor TEMIZ gorunuyor ve cikis kodu 0 donuyordu.
+                # Yani "yedi AUTHZ kontrolunun hicbiri kosmadi" ile "hepsi gecti" ayni
+                # ekrani uretiyordu. Bir kategoriyi tamamen kaybetmek info degil, kritik:
+                # o kategoride HICBIR SEY olculmedi.
+                results.append(loader_error_row(checker.__name__, e))
+
+        # KAPSAM KAPISI: yukaridaki duzeltme yalnizca modul CAGRISI patlarsa calisir.
+        # Bir kontrol modulun ICINDE sessizce dusebilir (or. bir except blogu satiri
+        # hic eklemezse) ve o zaman satir sayisi 21'den 15'e duser, hicbir hata gorunmez.
+        # Rapor bir kontrolun BEKLENDIGINI bilmiyorsa, yoklugunu de bilemez.
+        results.extend(_coverage_gaps(results))
+
         docs = _os.path.join(_KASA_ROOT, "docs")
         os.makedirs(docs, exist_ok=True)
         md, js = render(results, meta)
@@ -117,28 +207,20 @@ def main() -> int:
         with open(os.path.join(docs, "security_bench_result.json"), "w", encoding="utf-8") as json_file:
             json_file.write(js)
         
-        blocking = [r for r in results
-                    if r['status'] == 'FAIL' and r['severity'] in ('critical', 'high')]
-        unmeasured = [r for r in results
-                      if r['status'] == 'ERROR' and r['severity'] in ('critical', 'high')]
         # Cikis kodu UC durumu ayirir; ikisine indirgemek iki ayri yalandan birini uretir:
         #   0 dersek  -> "olcemedik"i "temiz" gibi gosteririz  (sahte yesil; otomasyon gecer)
         #   1 dersek  -> "olcemedik"i "acik bulduk" gibi gosteririz (sahte kirmizi; kurt masali)
         # Ikisi de yanlis. Ayri bir kod, otomasyonun "delik var" ile "bakamadik"i ayirt
         # etmesini saglar -- rapor metnindeki ayrimin makine tarafindaki karsiligidir.
         #   0 = temiz | 1 = gercek bulgu | 2 = beklenmedik hata | 3 = kapsam eksik
+        state, code, blocking, unmeasured = verdict(results)
         issues = len([r for r in results if r['status'] != 'PASS'])
-        state = ('FAIL' if blocking else 'UNVERIFIED' if unmeasured else 'PASS')
         summary = (f"SECURITY BENCHMARK: {state} - {issues} issues found."
                    + (f" NOT MEASURED: {', '.join(r['id'] for r in unmeasured)}." if unmeasured else "")
+                   + f" ({len(results)} kontrol satiri; beklenen en az {len(EXPECTED_CHECK_IDS)} kimlik)"
                    + " Report saved at docs/SECURITY_BENCHMARK.md and docs/security_bench_result.json")
         print(summary)
-
-        if blocking:
-            return 1
-        if unmeasured:
-            return 3
-        return 0
+        return code
     except Exception as e:
         print(f"Unexpected error: {e}")
         return 2
