@@ -185,8 +185,7 @@ arayüzü sayfa bağlamının dışına almak), yol haritasında.
 
 ## 7. Bilinen ortam tuzakları (tam liste [`KORTEX.md`](KORTEX.md) §2)
 
-- **Çıplak `python` çalışmaz** → Microsoft Store saplaması, **çıkış kodu 9009**. Gerçek yorumlayıcı:
-  `C:\Users\Kanarya\AppData\Local\Python\pythoncore-3.14-64\python.exe`
+- **Çıplak `python` çalışmaz** → Microsoft Store saplaması, **çıkış kodu 9009**. Gerçek- Python sürümü ve yolu: `pythoncore-3.14-64\python.exe`
 - **Test daima izole vault** (`KASA_VAULT_PATH` ayrı dizin); gerçek vault'a dokunma. Alt-ajana bu
   kısıtı **açıkça** yaz — kural kendiliğinden geçmiyor (bir alt-ajan gerçek vault'u sorguladı).
 - **PID öldürme yok** — sahibin süreçleri koşuyor (openclaw, streamlit, ComfyUI, uvicorn); komut

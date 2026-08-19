@@ -246,9 +246,15 @@ class VaultTools:
         profile_deleted = cursor.rowcount
 
         # L2 Kör İndeks (Blind Indexing) ile O(1) hızında arama:
-        topic_hash = hmac.new(self._key(), topic.lower().encode('utf-8'), hashlib.sha256).hexdigest()
-        cursor.execute("SELECT DISTINCT event_id FROM search_index WHERE word_hash = ?", (topic_hash,))
-        match_ids = [r[0] for r in cursor.fetchall()]
+        topic_words = set(re.findall(r'\b\w{3,}\b', topic.lower()))
+        if not topic_words:
+            topic_words = {topic.lower()}
+        match_ids_set = set()
+        for tw in topic_words:
+            whash = hmac.new(self._key(), tw.encode('utf-8'), hashlib.sha256).hexdigest()
+            cursor.execute("SELECT DISTINCT event_id FROM search_index WHERE word_hash = ?", (whash,))
+            match_ids_set.update(r[0] for r in cursor.fetchall())
+        match_ids = list(match_ids_set)
         
         events_scanned = 0 # search_index kullanıldığı için tam tarama (scan) maliyeti 0
         events_matched = len(match_ids)

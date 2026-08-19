@@ -52,9 +52,9 @@ def _unreached(check_id: str, title: str, resp, severity: str = "high") -> dict:
     return {
         "id": check_id, "category": "authz", "title": title,
         "status": "ERROR", "severity": severity,
-        "evidence": (f"HEDEF YUZEYE VARILMADI: istek kimlik-baglama kapisinda durdu "
-                     f"(HTTP {resp.status_code}). Bu kontrol bu kosumda HICBIR SEY olcmedi."),
-        "remediation": "BOUND token kullan: beyan edilen kimlige bagli bearer tasi.",
+        "evidence": (f"UNREACHED-TARGET: request stopped at the identity-binding gate "
+                     f"(HTTP {resp.status_code}). This check measured NOTHING in this run."),
+        "remediation": "Use a BOUND token: carry a bearer bound to the claimed identity.",
     }
 
 def check_token_missing():
@@ -132,7 +132,7 @@ def check_agent_system():
                 "title": title,
                 "status": "PASS" if status == 403 else "FAIL",
                 "severity": "critical",
-                "evidence": f"Status code: {status} (rezerve-kimlik blogu denendi; govde: {(response.text or '')[:80]})"
+                "evidence": f"Status code: {status} (reserved-identity block exercised; body: {(response.text or '')[:80]})"
             }
     os.environ.pop("KASA_VAULT_PATH", None)
     return [result]
@@ -225,7 +225,7 @@ def check_deny_by_default():
         # BOUND: hicbir izni olmayan bir kimlige BAGLI token. Kimlik kapisi gecilir,
         # dolayisiyla olculen sey gercekten IZIN BROKERININ varsayilan-reddidir.
         bound = _mint_bound_token(srv, agent_id)
-        response = client.post("/v1/execute_tool", headers={"Authorization": f"Bearer {bound}"}, json={"tool_calls":[{"tool_name":"profile_read","parameters":{"scope":"user.name"}}], "agent_id": agent_id})
+        response = client.post("/v1/execute_tool", headers={"Authorization": f"Bearer {bound}"}, json={"tool_calls":[{"tool_name":"profile_read","parameters":{"scope":"user.name", "reason":"security_bench_authz_check"}}], "agent_id": agent_id})
         status = response.status_code
         body = response.text or ""
         if _IDENTITY_GATE_MARK in body:
@@ -245,8 +245,8 @@ def check_deny_by_default():
                 "title": title,
                 "status": "PASS" if ok else "FAIL",
                 "severity": "critical",
-                "evidence": (f"Status code: {status}; izin-brokeri reddi: {broker_refusal}; "
-                             f"govde: {body[:90]}")
+                "evidence": (f"Status code: {status}; permission-broker refusal: {broker_refusal}; "
+                             f"body: {body[:90]}")
             }
     os.environ.pop("KASA_VAULT_PATH", None)
     return [result]

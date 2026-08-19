@@ -48,7 +48,7 @@ sonuçlar kadar kaydın parçasıdır.
 | Component | Version | Note |
 |---|---|---|
 | OS | Windows 11 Pro 10.0.26200 | DPAPI available / DPAPI mevcut |
-| Python | 3.14.5 | `C:\Users\Kanarya\AppData\Local\Python\pythoncore-3.14-64` |
+| Python | 3.14.5 | `pythoncore-3.14-64` |
 | Node / npx | v24.16.0 / 11.13.0 | required by MCP Inspector |
 | `mcp` (Python SDK) | **1.29.0** (pinned) | was resolving to 2.0.0 — see §2.1 |
 | fastapi / uvicorn | 0.138.0 / 0.48.0 | |

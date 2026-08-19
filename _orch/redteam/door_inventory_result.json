@@ -6,7 +6,7 @@
   "claim_under_test": "hafizaya (profile/events/audit) ulasan her AG YOLU kimlik dogrulamasi, izin brokeri veya sahip kapisiyla korunuyor; korunmayan yol YOK",
   "method": "rotalar FastAPI app.routes'tan PROGRAMATIK cikarildi (elle liste yok); her rota 3 kimlik-bilgisi profiliyle denendi",
   "isolation": {
-    "vault_home": "C:\\Users\\Kanarya\\AppData\\Local\\Temp\\kasa_live_attack_yaakc94q",
+    "vault_home": "%TEMP%\\kasa_live_attack_yaakc94q",
     "notes": [
       "agent.harness.OLLAMA_BASE -> http://127.0.0.1:1 (yerel model servisi mesgul edilmesin; kapi olcumu etkilenmez, /v1/agent/* islev sonucu OLCULMEDI)"
     ]

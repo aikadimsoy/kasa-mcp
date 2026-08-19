@@ -30,8 +30,11 @@ def quarantine_reason(value) -> str:
             text = json.dumps(value, ensure_ascii=False)
         except Exception:
             text = str(value)
+            
+    # Structural Deterministic Guard
     if _QUARANTINE_PATTERNS.search(text):
         return "agent-directed imperative pattern in value"
+        
     return None
 
 

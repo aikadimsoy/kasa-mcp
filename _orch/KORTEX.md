@@ -51,7 +51,7 @@ değil, **öğretici**: İngilizce terimi çevirir ve ne işe yaradığını anl
 
 ### `python` bu makinede çalışmaz `[project]`
 `python` → Microsoft Store saplaması → **çıkış kodu 9009**.
-Gerçek yorumlayıcı: `C:\Users\Kanarya\AppData\Local\Python\pythoncore-3.14-64\python.exe`
+Gerçek yorumlayıcı yolu ortam değişkenlerinden veya `pythoncore-3.14-64\python.exe` yolundan çözülür.
 
 Bu yüzden kullanıcının **8 hook'unun 7'si sessizce ölüydü**: `shared_context.json` 2026-07-01'den
 beri boş, sıfır-token politikası bana **hiç ulaşmadı** (görmezden gelmedim — hiç almadım).

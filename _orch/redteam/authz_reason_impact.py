@@ -50,18 +50,18 @@ def _which_gate(resp) -> str:
     """
     body = (resp.text or "").lower()
     if "not authenticated" in body:
-        return "KIMLIK-DOGRULAMA (bearer yok)"
+        return "auth:no-bearer"
     if "geçersiz token" in body or "gecersiz token" in body:
-        return "KIMLIK-DOGRULAMA (token taninmadi)"
+        return "auth:unknown-token"
     if "uyuşmuyor" in body or "uyusmuyor" in body:
-        return "KIMLIK-BAGLAMA (F-IMP kapisi) — HEDEF YUZEYE VARILMADI"
-    if "rezerve" in body or "reserved" in body:
-        return "REZERVE-KIMLIK blogu"
+        return "identity-binding:UNREACHED-TARGET"
+    if "mevcut değil" in body or "mevcut degil" in body:
+        return "reserved-identity"
     if "izni yok" in body:
-        return "IZIN BROKERI (hedeflenen kapi)"
+        return "permission-broker:TARGET"
     if resp.status_code >= 500:
-        return "COKME (5xx) — hicbir kapi degil"
-    return f"siniflandirilamadi (HTTP {resp.status_code})"
+        return f"crash:{resp.status_code}"
+    return f"unclassified:{resp.status_code}"
 
 
 def main() -> int:
@@ -147,7 +147,7 @@ def main() -> int:
     print(f"  PASS diyen ama kapiya VARMAYAN kontrol : {[r['id'] for r in silent] or 'YOK'}")
     print(f"  FAIL'e donen kontrol                   : {[r['id'] for r in broken] or 'YOK'}")
 
-    shadowed = [r for r in results if "KIMLIK-BAGLAMA" in r["refusing_gate"]]
+    shadowed = [r for r in results if "identity-binding" in r["refusing_gate"]]
     if shadowed:
         print(f"  KIMLIK KAPISININ GOLGELEDIGI kontrol   : {[r['id'] for r in shadowed]}")
 

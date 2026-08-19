@@ -247,6 +247,8 @@ class Vault:
             # Faz-1: audit imza + Merkle kolonlari (eski DB'lerde ekle; NULL = legacy/unsigned)
             "ALTER TABLE audit ADD COLUMN signature TEXT",
             "ALTER TABLE audit_checkpoint ADD COLUMN merkle_root TEXT",
+            # KORTEX Decay (Çürüme) - Güven skoru (weight) eklenmesi
+            "ALTER TABLE profile ADD COLUMN weight REAL DEFAULT 1.0",
         ):
             try:
                 self.conn.execute(migration)

@@ -25,6 +25,8 @@ CREATE_EVENTS_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp);
 """
 
+
+
 # DEBI-1 dedup arama indeksi. ALL_INDEXES'e EKLENMEZ: eski DB'lerde content_hash kolonu
 # ALTER-migration ile gelir; indeks migration SONRASI database._init_schema'da kurulur.
 CREATE_EVENTS_HASH_INDEX = """
@@ -39,6 +41,7 @@ CREATE TABLE IF NOT EXISTS profile (
     value TEXT NOT NULL,
     provenance TEXT NOT NULL, -- JSON array of event IDs
     supersedes INTEGER,       -- önceki versiyonun satır ID'si
+    weight REAL NOT NULL DEFAULT 1.0, -- KORTEX güven skoru (0.0 - 1.0 arası)
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 );

@@ -179,6 +179,51 @@ KASA exposes the following MCP tools for local use:
 
 - `profile_read(scope)`, `profile_write(fact)`, `forget(topic)`, `audit_read(range)`, `event_ingest`, `prune_expired_events`.
 
+## 90-Second Interactive Demo
+
+Run the standalone demonstration script to see KASA's Reference Monitor and Memory Quarantine block a prompt injection attack in real time:
+
+```powershell
+python demo_attack_defense.py
+```
+
+### What the Demo Shows
+- **WITHOUT KASA (Unprotected):** Prompt injection tricks an autonomous agent into exfiltrating sensitive credentials (`~/.ssh/id_rsa`) and poisoning persistent memory (**PWNED**).
+- **WITH KASA (Protected):** KASA's Reference Monitor intercepts tool execution (**DENIED - HTTP 403**), quarantines malicious memory writes (**QUARANTINED**), and records an Ed25519-signed, Merkle-chained audit log entry (**PROTECTED**).
+
+## 🛡️ KASA AI Agent Security Scanner (`kasa-scan`)
+
+Audit any MCP server or AI agent for **OWASP Agent Security Risks** (Impersonation, Memory Poisoning, Data Egress, Plaintext Storage) with a single command:
+
+```powershell
+# Scan your local agent or MCP server
+python -m tools.scanner.cli --url http://127.0.0.1:8000 --lang en
+```
+
+### GitHub Actions CI/CD Integration
+
+Add automated AI agent security scanning to your repository's `.github/workflows/agent-scan.yml`:
+
+```yaml
+name: Agent Security Scan
+on: [pull_request]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run KASA Agent Security Scanner
+        run: |
+          pip install -r requirements.txt
+          python -m tools.scanner.cli --url http://127.0.0.1:8000 --output-md scan_report.md || true
+      - name: Post Summary to GitHub PR
+        if: always()
+        run: cat scan_report.md >> $GITHUB_STEP_SUMMARY
+```
+
 ## Testing
 
 KASA uses pytest for testing. To run the tests, use:

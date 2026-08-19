@@ -273,7 +273,7 @@ def run():
         try:
             # Controller splice: path'siz 'scan' repo'yu taramiyordu (sahte PASS=0). --all-files ile
             # gercek dosyalar taranir; .pytest_cache (sabit CACHEDIR.TAG) false-positive olarak haric.
-            _EXCLUDE = (r"(^|[\\/])(build_nuitka_312|build_nuitka_onefile|build_nuitka)[\\/]"
+            _EXCLUDE = (r"(^|[\\/])(build_nuitka_312|build_nuitka_onefile|build_nuitka|_lab)[\\/]"
                         r"|\.pytest_cache")
             # Ayirici olarak [\\/] kullanilir, duz `/` DEGIL.
             # Olculdu (2026-08-02): ilk surum yalnizca `/` ile yazilmisti; Windows'ta yollar

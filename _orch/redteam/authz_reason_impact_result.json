@@ -1,5 +1,5 @@
 {
-  "measured_at": "2026-08-05T19:21:49",
+  "measured_at": "2026-08-05T21:14:47",
   "level": "RAN-LIVE",
   "positive_control": {
     "http": 403,
@@ -13,7 +13,7 @@
       "predicate": "status in [401,403]",
       "audit_rows_written": 0,
       "gate_reached": false,
-      "refusing_gate": "KIMLIK-DOGRULAMA (bearer yok)",
+      "refusing_gate": "auth:no-bearer",
       "body": "{\"detail\":\"Not authenticated\"}"
     },
     {
@@ -23,7 +23,7 @@
       "predicate": "status == 401",
       "audit_rows_written": 0,
       "gate_reached": false,
-      "refusing_gate": "KIMLIK-DOGRULAMA (token taninmadi)",
+      "refusing_gate": "auth:unknown-token",
       "body": "{\"detail\":\"Geçersiz token.\"}"
     },
     {
@@ -33,7 +33,7 @@
       "predicate": "status == 403",
       "audit_rows_written": 0,
       "gate_reached": false,
-      "refusing_gate": "KIMLIK-BAGLAMA (F-IMP kapisi) — HEDEF YUZEYE VARILMADI",
+      "refusing_gate": "identity-binding:UNREACHED-TARGET",
       "body": "{\"detail\":\"agent_id token'a bağlı kimlikle uyuşmuyor.\"}"
     },
     {
@@ -43,7 +43,7 @@
       "predicate": "status == 403",
       "audit_rows_written": 0,
       "gate_reached": false,
-      "refusing_gate": "KIMLIK-BAGLAMA (F-IMP kapisi) — HEDEF YUZEYE VARILMADI",
+      "refusing_gate": "identity-binding:UNREACHED-TARGET",
       "body": "{\"detail\":\"agent_id token'a bağlı kimlikle uyuşmuyor.\"}"
     }
   ]

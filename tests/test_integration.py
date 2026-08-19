@@ -88,7 +88,7 @@ class TestVaultTools(unittest.TestCase):
         provenance = "test_provenance"
         result = self.tools.profile_write(key, value, provenance)
         self.assertEqual(result["status"], "success")
-        result = self.tools.profile_read("*")
+        result = self.tools.profile_read("*", reason="test_audit")
         self.assertEqual(result["status"], "success")
         self.assertIn(key, [row["key"] for row in result["data"]])
 
@@ -99,7 +99,7 @@ class TestVaultTools(unittest.TestCase):
         self.tools.profile_write(key, value, provenance)
         result = self.tools.forget(key)
         self.assertEqual(result["status"], "success")
-        result = self.tools.profile_read("*")
+        result = self.tools.profile_read("*", reason="test_audit")
         self.assertNotIn(key, [row["key"] for row in result["data"]])
 
     def test_audit_read(self):
