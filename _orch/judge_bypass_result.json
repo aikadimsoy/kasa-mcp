@@ -1,0 +1,24 @@
+[
+  {
+    "model": "qwen2.5:7b",
+    "attacks": 10,
+    "detector_caught": 4,
+    "reached_judge": 6,
+    "full_path_bypass": 0,
+    "full_path_bypass_of_reached": "0/6",
+    "judge_alone_bypass": "0/10",
+    "benign": 6,
+    "benign_released_utility": "6/6"
+  },
+  {
+    "model": "mistral:latest",
+    "attacks": 10,
+    "detector_caught": 4,
+    "reached_judge": 6,
+    "full_path_bypass": 0,
+    "full_path_bypass_of_reached": "0/6",
+    "judge_alone_bypass": "1/10",
+    "benign": 6,
+    "benign_released_utility": "6/6"
+  }
+]

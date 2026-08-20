@@ -182,9 +182,22 @@ def judge_claim_supported(
         ),
         "stream": False,
         # Turkce not: temperature 0 -> ayni girdi ayni cevap. Bir guvenlik
-        # kapisinin karari kosudan kosuya degismemeli. num_predict, nonce +
-        # hukum kelimesini alacak kadar (12 hex + bosluk + kelime).
-        "options": {"temperature": 0.0, "num_predict": 16},
+        # kapisinin karari kosudan kosuya degismemeli.
+        #
+        # num_predict=32 (OLCULDU 2026-08-21, duzeltme): 16 idi ve KISAYDI.
+        # 12-hane hex nonce token acisindan DEGISKEN maliyetli -- bazi nonce'lar
+        # ('65701b52353e', '3844a91ddb76') daha cok token'a bolunuyor ve
+        # 16-token butcesinde hukum kelimesi KESILIYOR:
+        #     mistral, nonce='65701b52353e', np=16 -> "... UNSUP"     (kesik)
+        #                                     np=24 -> "... UNSUPPORTED" (tam)
+        # Kesik "UNSUP"/"UNSUPPORT" \bUNSUPPORTED\b'yi eslesmiyor -> yanit
+        # TANINMAZ -> None -> fail-closed KARANTINADA KALIR. Bu GUVENLI ama
+        # UTILITY'yi bozar (dogru UNSUPPORTED/ SUPPORTED verdikleri UNRESOLVED
+        # sayilir) VE model davranisini yanlis-teshis ettirir ("model formati
+        # tutturamiyor" derken asil sebep butce). 32, nonce + en uzun hukum
+        # ("UNSUPPORTED") icin rahat pay birakir. Fazla token zarar vermez:
+        # ayristirici nonce'tan SONRAKI ilk hukum kelimesini okur, gerisini atar.
+        "options": {"temperature": 0.0, "num_predict": 32},
     }
 
     try:
