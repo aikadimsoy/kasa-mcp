@@ -72,7 +72,22 @@ def _write_toml(data: dict, path: Path) -> None:
             if isinstance(value, list):
                 items = ", ".join(f'"{v}"' for v in value)
                 lines.append(f'{key} = [{items}]')
-            elif isinstance(value, int):
+            elif isinstance(value, bool):
+                # Turkce not (2026-08-20, OLCULDU): bu dal `int` dalindan ONCE
+                # gelmek ZORUNDA -- Python'da `bool`, `int`'in ALT SINIFIDIR,
+                # yani `isinstance(False, int)` True'dur. Once int dali
+                # kosuyordu ve dosyaya `False` yaziliyordu; TOML `false` ister
+                # ve `False`u REDDEDER.
+                # Yasanan zincir: kasa.toml.example `require_semantic_validation
+                # = false` iceriyor -> ilk calistirmada uretilen bearer token'i
+                # kalici kilmak icin config GERI YAZILIYOR (asagida satir ~173)
+                # -> `false` `False` oluyor -> IKINCI calistirma
+                # tomllib.TOMLDecodeError ile coquyor, sunucu hic acilmiyor.
+                # Sahibin kendi kasa.toml'unda boolean YOK, o yuzden onun
+                # makinesinde hic patlamadi; ariza yalniz YENI kullaniciyi
+                # vuruyordu. Test: tests/test_config_roundtrip.py
+                lines.append(f"{key} = {'true' if value else 'false'}")
+            elif isinstance(value, (int, float)):
                 lines.append(f"{key} = {value}")
             else:
                 lines.append(f'{key} = "{value}"')

@@ -68,6 +68,32 @@ def cmd_list(conn, agent_id: str) -> int:
     return 0
 
 
+# Turkce not (2026-08-20, OLCULDU): asagidaki uyari bir tuzagi kapatiyor.
+# tools.py:176 `profile_read` icin `profile:read:{scope}` izni sorar, ama
+# tools.py:324 `list_quarantined` icin DUZ `profile:read` sorar. Ayni dize,
+# iki anlam. `_check_permission` yalniz TAM esitlik ya da `*` ile biten bir
+# yetki icin prefix eslemesi yapar -- yani duz `profile:read` yetkisi HICBIR
+# profil okumasini karsilamaz.
+# Canli olcum: `grant my_agent profile:read` verildikten SONRA gercek bir stdio
+# MCP istemcisinden yapilan cagri "Ajan 'my_agent' icin 'user.preferences'
+# okuma izni yok" (HTTP 403) dondu; `profile:read:*` verilince ayni cagri
+# basarili oldu. Sessiz kalirsa sahip yetkiyi verdigini sanip calismayan bir
+# kurulumla bas basa kalir.
+_SCOPED_PREFIXES = ("profile:read",)
+
+
+def _warn_if_scope_matches_nothing(scope: str) -> None:
+    """Verilen yetkinin hicbir istegi karsilamayacagi durumda uyarir."""
+    if scope in _SCOPED_PREFIXES:
+        print(
+            f"  UYARI: duz '{scope}' yetkisi profil OKUMALARINI karsilamaz.\n"
+            f"         profile_read '{scope}:<kapsam>' ister; izin kontrolu tam\n"
+            f"         esitlik ya da '*' ile biten yetki arar.\n"
+            f"         Muhtemelen istedigin: {scope}:*   ya da  {scope}:user.preferences.*\n"
+            f"         (Duz '{scope}' yine de bir ise yarar: list_quarantined onu kontrol eder.)"
+        )
+
+
 def cmd_grant(conn, agent_id: str, scope: str) -> int:
     if agent_id in _FORBIDDEN_AGENTS:
         print(f"REFUSED: agent id '{agent_id}' is reserved.", file=sys.stderr)
@@ -87,6 +113,7 @@ def cmd_grant(conn, agent_id: str, scope: str) -> int:
         )
     conn.commit()
     print(f"GRANTED: {agent_id} <- {scope}")
+    _warn_if_scope_matches_nothing(scope)
     return 0
 
 

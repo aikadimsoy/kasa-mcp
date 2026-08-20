@@ -466,7 +466,23 @@ async def health_check():
     """Health check — auth gerektirmez."""
     return {"status": "ok", "version": "0.2.0"}
 
-def start_server(host: str = "127.0.0.1", port: int = 8000):
+def start_server(host: str = None, port: int = None):
+    """MCP sunucusunu baslatir. Varsayilanlar YAPILANDIRMADAN gelir.
+
+    Turkce not (2026-08-20, OLCULDU): bu imza eskiden
+    `host="127.0.0.1", port=8000` idi ve asagidaki `__main__` onu ARGUMANSIZ
+    cagiriyordu -- yani `kasa.toml` icindeki `[server] host/port` SESSIZCE yok
+    sayiliyordu. Olcum: `KASA_CONFIG` ile `port = 8791` veren bir config
+    verildi; sunucu **8000**'de acildi. Ayni config'ten vault yolu ve bearer
+    token DOGRU okunuyordu (`_CONFIG_PATH`, satir 67) -- okunmayan tek sey
+    porttu. Yani kullanicinin portu degistirmesi hicbir sey yapmiyordu ve
+    hicbir uyari da basilmiyordu.
+
+    Acik argumanlar hala oncelikli (`run.py` gibi cagiranlar icin).
+    Test: tests/test_server_start_config.py (iki yonlu).
+    """
+    host = host or _cfg["server"].get("host", "127.0.0.1")
+    port = int(port if port is not None else _cfg["server"].get("port", 8000))
     print(f"[KASA] MCP sunucusu baslatiliyor: http://{host}:{port}")
     # F-DASH: owner UI'ye erisim launch nonce'u ister. Manuel/dev kosumda launch.py yoksa
     # sahibin URL'yi buradan alabilmesi icin YAZDIR (loopback konsoluna; disari gitmez).
