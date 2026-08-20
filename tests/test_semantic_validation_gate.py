@@ -124,16 +124,32 @@ def _seed_pending(tmp_path, monkeypatch, claim="Kullanici sabahlari filtre kahve
     return vault, tools
 
 
-def _fake_judge(monkeypatch, answer):
-    """Hakem'in HTTP yanıtını taklit eder — ağ yok, model yok, GPU yok."""
-    class _R:
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def read(self): return json.dumps({"response": answer}).encode("utf-8")
+def _fake_judge(monkeypatch, answer, echo_nonce=True):
+    """Hakem'in HTTP yanıtını taklit eder — ağ yok, model yok, GPU yok.
 
+    Türkçe not (2026-08-20): taklit artık GERÇEK istek gövdesini okur ve
+    istemdeki nonce'u geri verir. Önceki hâli düz bir "SUPPORTED" dönüyordu;
+    yani sözleşmenin yarısını (yanıtın bu isteğe ait olduğunu gösteren işaret)
+    hiç konuşmuyordu. D32: sınır testinde gerçek kablo biçimi kullanılır,
+    kendi dilimizin "doğru görünen" kestirmesi değil.
+    """
     import src.vault.judge as judge_mod
-    monkeypatch.setattr(judge_mod.urllib.request, "urlopen",
-                        lambda req, timeout=None: _R())
+
+    def _urlopen(req, timeout=None):
+        prompt = json.loads(req.data.decode("utf-8"))["prompt"]
+        text = answer
+        if echo_nonce:
+            nonce = judge_mod._nonce_of_prompt(prompt)
+            if nonce:
+                text = "%s %s" % (nonce, answer)
+
+        class _R:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return json.dumps({"response": text}).encode("utf-8")
+        return _R()
+
+    monkeypatch.setattr(judge_mod.urllib.request, "urlopen", _urlopen)
 
 
 def test_judge_supported_releases_row(tmp_path, monkeypatch):
@@ -181,9 +197,13 @@ def test_judge_unreachable_keeps_row_fail_closed(tmp_path, monkeypatch):
 
 
 def test_judge_garbage_answer_is_unresolved_not_pass(tmp_path, monkeypatch):
-    """Tanınmayan yanıt da geçiş DEĞİLDİR — sessiz geçiş yok."""
+    """Tanınmayan yanıt da geçiş DEĞİLDİR — sessiz geçiş yok.
+
+    Nonce DOĞRU verilir; reddin sebebi hüküm kelimesinin tanınmaması olmalı,
+    nonce eksikliği değil (D24/4 — doğru sebepten yeşil).
+    """
     vault, tools = _seed_pending(tmp_path, monkeypatch)
-    _fake_judge(monkeypatch, "belki, emin degilim")
+    _fake_judge(monkeypatch, "belki, emin degilim", echo_nonce=True)
 
     out = tools.release_pending_via_judge()
     assert out["unresolved"] == 1 and out["released"] == 0

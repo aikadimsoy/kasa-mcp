@@ -281,11 +281,22 @@ class VaultTools:
             # Bayrak açıkken davranış aynen korunur (tasarım niyeti silinmedi) ve
             # release_pending_via_judge() ile Hakem yolu kullanılabilir. Varsayılanın ne
             # olacağı sahibin kararıdır (kasa.toml [vault] require_semantic_validation).
-            if self.agent_id != "system" and quarantine is None and self._semantic_validation_required():
-                reason = "pending-semantic-validation"
+            #
+            # SIRA DUZELTMESI (2026-08-20, olculdu): once DEDEKTOR, sonra kapi.
+            # Onceki sira "kapi acik mi" diye once soruyordu; acikken
+            # _quarantine_reason() HIC CAGRILMIYORDU. Sonuc: klasik bir
+            # enjeksiyon yuku, dedektorun gordugu 'agent-directed imperative
+            # pattern' yerine Hakem'in OTOMATIK serbest birakabilecegi
+            # 'pending-semantic-validation' etiketiyle kaydediliyordu. Yani
+            # kapiyi ACMAK savunmayi zayiflatiyordu. Test:
+            # tests/test_judge_adversarial.py::test_gate_open_does_not_shortcircuit_the_detector
+            if quarantine is not None:
+                # Faz-2 (G3/ASI06): cagiran taraf acikca zorluyor (sahip yolu).
+                reason = "forced" if quarantine else None
             else:
-                # Faz-2 (G3/ASI06): karantina degerlendirmesi.
-                reason = ("forced" if quarantine else None) if quarantine is not None else _quarantine_reason(value)
+                reason = _quarantine_reason(value)
+                if reason is None and self.agent_id != "system" and self._semantic_validation_required():
+                    reason = "pending-semantic-validation"
             
         if reason:
             cursor.execute(
@@ -354,7 +365,7 @@ class VaultTools:
         `unresolved`, Hakem'in karar veremediği satır sayısıdır ve **sıfır
         olmadıkça bu koşudan "hepsi temiz" hükmü çıkarılamaz**.
         """
-        from ..vault.judge import judge_claim_supported
+        from ..vault.judge import judge_claim_supported, judge_input_unsafe_reason
 
         if not self._check_permission("admin:grant"):
             raise PermissionError(f"Ajan '{self.agent_id}' için karantina serbest bırakma izni yok.")
@@ -387,8 +398,32 @@ class VaultTools:
                                 "why": "kaynak metin bulunamadi"})
                 continue
 
+            # ON-ELEME (deterministik, modele sorulmadan).
+            # Hakem'in istemi iki taraftan da saldirganin yazabildigi metinle
+            # dolar: `claim` ajanin yazdigi deger, `source` ajanin events:write
+            # ile yazabildigi olay metni. Literatur bu sinifi olcmus
+            # (arXiv:2505.13348 — hakem rolundeki modellerde %65,9'a varan
+            # saldiri basarisi). Bu yuzden dusmanca metin hakeme HIC sorulmaz.
+            unsafe = judge_input_unsafe_reason(str(claim)) or judge_input_unsafe_reason(source)
+            if unsafe:
+                kept += 1
+                details.append({"id": qid, "key": key, "verdict": "kept",
+                                "why": "hakeme sorulmadi (%s)" % unsafe})
+                continue
+
             supported = judge_claim_supported(str(claim), source)
             if supported is True:
+                # DEGISMEZ KURAL: otomatik yol, deterministik katmanin
+                # reddedecegini veremez. release_quarantined() zorla yazar
+                # (quarantine=False -> _quarantine_reason hic kosmaz); o kapi
+                # sahibin bilincli onayi icin tasarlandi. Otomatik Hakem yolu
+                # ayni kapiyi kullandigi icin burada ayrica denetlenir.
+                det = _quarantine_reason(claim)
+                if det:
+                    kept += 1
+                    details.append({"id": qid, "key": key, "verdict": "kept",
+                                    "why": "hakem SUPPORTED dedi ama dedektor reddetti: %s" % det})
+                    continue
                 self.release_quarantined(qid)
                 released += 1
                 details.append({"id": qid, "key": key, "verdict": "released"})

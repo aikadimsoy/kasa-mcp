@@ -76,10 +76,21 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "pydantic>=2.0.0",
-    "PyQt5>=5.15.0",
     "cryptography>=42.0.0",
     # mcp: YALNIZ src/mcp_adapter stdio sureci icin (MIT lisans); exe'ye paketlenmez.
-    "mcp>=1.2",
+    #
+    # UST SINIR ZORUNLU (2026-08-20 olculdu). Burasi `mcp>=1.2` yaziyordu, yani
+    # requirements.txt'teki `<2` sinirini TASIMIYORDU -- ustundeki yorum
+    # "surum sinirlari dahil aynen kopyalandi" dedigi hâlde. Olcum:
+    #   pip index versions mcp -> en yenisi 2.0.0
+    #   mcp-2.0.0-py3-none-any.whl icinde 'fastmcp' gecen HICBIR dosya yok
+    #     (mcp/server/ altinda: auth, lowlevel, mcpserver)
+    #   src/mcp_adapter/__main__.py:60 -> from mcp.server.fastmcp import FastMCP
+    # Yani `pip install .` (pyproject yolu) mcp 2.0.0 kurar ve adaptor
+    # ModuleNotFoundError ile IMPORT bile edilemez. requirements.txt yolundan
+    # kuran kullanici saglam, pyproject yolundan kuran kirik olurdu.
+    # Kaymayi tekrar etmemek icin: tests/test_dependency_parity.py
+    "mcp>=1.2,<2",
 ]
 
 [project.optional-dependencies]
@@ -99,6 +110,27 @@ test = [
     "pytest>=7.0",
     "httpx",
     "pywebview",
+]
+
+# Masaustu (tepsi ikonu + yerel pencere) EK bagimliligi.
+#
+# Turkce not (2026-08-20, OLCULDU): PyQt5 cekirdek bagimlilik DEGIL. Olcum,
+# PyQt5 ve webview import'lari bloklanarak yapildi:
+#     src.mcp_server.server   -> OK
+#     src.mcp_adapter.__main__-> OK
+#     src.mcp_server.tools    -> OK
+#     src.vault.database      -> OK
+# PyQt5'e dokunan yalniz iki dosya var: src/tray/app.py ve run.py -- ikisi de
+# masaustu baslatici. Yani sunucuyu/MCP adaptorunu kullanmak isteyen birine
+# (basligi: headless Linux/macOS, konteyner, CI) ~100 MB'lik bir GUI
+# kutuphanesi ZORUNLU tutuluyordu ve PyQt5 tekerlegi olmayan bir ortamda
+# `pip install .` tamamen basarisiz oluyordu.
+#
+# requirements.txt DEGISMEDI: orasi sahibin Windows masaustu kurulumudur ve
+# CI de onu kurar. Kayma olmasin diye esitlik testi guncellendi:
+# tests/test_dependency_parity.py -> requirements.txt == dependencies + desktop
+desktop = [
+    "PyQt5>=5.15.0",
 ]
 
 # [project.urls]

@@ -25,7 +25,7 @@ A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
 > | Limits tool authority in ordinary code | deterministic broker; the model is never the boundary |
 > | Keeps a hash-chained audit ledger | tamper and deletion detection both measured PASS |
 > | Binds agent identity to the token | 7/7 live controls against a real server, positive **and** negative — `_orch/redteam/fimp_live_verify.py` |
-> | 384 tests pass | 2026-08-19 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers |
+> | 451 tests pass | 2026-08-20 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers, 384 on 2026-08-19, then 428 once 19 broken tests were fixed rather than deleted. **A test count is not a security claim** — the same run also added tests that proved defects in code this project had already called "verified" |
 >
 > **What is NOT claimed** — these are open, written down, and some are measured failures:
 > full at-rest encryption, egress control, and independent security audit. A network caller can
@@ -144,6 +144,36 @@ number from it; per-test detail with explicit limits is
     checks repeatedly (`_orch/loop/`, `tools/security_bench/`). They raise regression coverage;
     they are not evidence of security by themselves.
 
+### What KASA does **not** protect against
+
+Two limits that are easy to read into the project by mistake. Both were checked against
+published work on 2026-08-20; evidence level is **DOCUMENTED** (secondary sources), not
+measured on this machine.
+
+- **The client-side MCP `stdio` config → command execution issue is outside KASA's boundary.**
+  OX Security published an architectural flaw in MCP's STDIO transport: whoever can edit an MCP
+  *client's* configuration can get an arbitrary OS command executed, because the client launches
+  the server by running that command. It affects the official SDKs across Python, TypeScript,
+  Java and Rust, and Anthropic
+  [declined to change the protocol, calling the behaviour expected](https://thehackernews.com/2026/04/anthropic-mcp-design-vulnerability.html).
+  **KASA is the server, not the launcher** — it neither reads nor writes any client's MCP config,
+  so nothing KASA does can prevent this, and no version bump fixes it. Treat your MCP client
+  config as a trusted file. The downstream CVEs from this class (LiteLLM `CVE-2026-30623`,
+  Windsurf `CVE-2026-30615`, and others) are in *other* products, not in the `mcp` SDK itself;
+  there is no patched SDK release to upgrade to.
+- **The Judge is not a security boundary.** `release_pending_via_judge()` uses a local model to
+  decide whether a quarantined claim follows from its source event. LLM-as-a-judge is itself an
+  injection target: judges follow instructions embedded in the text they are judging
+  ([arXiv:2505.13348](https://arxiv.org/abs/2505.13348) measures up to 65.9% attack success on one
+  model), and *Attacker Moves Second* (2025) broke 12 published defences at >90% with adaptive
+  attacks. So the judge is wrapped, not trusted: the deterministic detector runs **first** and
+  also has the **last** word before release, hostile-looking text is never shown to the judge at
+  all, each prompt carries an unpredictable nonce the reply must echo, and anything unresolved
+  stays quarantined (fail-closed). Tests: [`tests/test_judge_adversarial.py`](tests/test_judge_adversarial.py).
+  **What that does not buy:** none of it stops an adaptive attacker — it raises cost. KASA has
+  **no measured bypass rate** for this path. The judge reduces how much the owner has to review;
+  it does not replace the owner.
+
 ### Roadmap
 
 Ordered by what blocks the next honest claim, not by effort. Each item closes a gap that is
@@ -177,6 +207,22 @@ currently measured open — the evidence is linked from [`SECURITY.md`](SECURITY
    ```bash
    pip install -r requirements.txt
    ```
+
+   > **Server / MCP-adapter only (no GUI).** `requirements.txt` is the full Windows desktop
+   > install and pulls in PyQt5 (~100 MB) for the tray app. If all you want is the vault server
+   > and the MCP adapter — a container, CI, or a headless box — install the package instead:
+   >
+   > ```bash
+   > pip install .            # core: server + MCP adapter
+   > pip install ".[desktop]" # adds the PyQt5 tray app
+   > ```
+   >
+   > Measured 2026-08-20: with `PyQt5` and `webview` imports blocked, `src.mcp_server.server`
+   > and `src.mcp_adapter.__main__` both import cleanly; only `src/tray/app.py` and `run.py`
+   > need PyQt5. The split is held by [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py),
+   > which also pins `mcp>=1.2,<2` in **both** files — `mcp` 2.0 removed `mcp.server.fastmcp`,
+   > which the adapter imports, so an unbounded `mcp` requirement makes the adapter
+   > un-importable. The DPAPI and Python-3.12 notes above still apply to the desktop path.
 3. **Local Ollama Runtime** (optional, needed only for distillation): install Ollama separately from https://ollama.com, then pull the model and make sure it serves at http://localhost:11434:
    ```bash
    ollama pull qwen2.5:7b
