@@ -48,8 +48,14 @@ koda ait. Üçü de kod okunarak değil, önce kırmızı test yazılarak bulund
      zorla yazdığı için (sahibin elle onayı yolu) otomatik yolun kendi kapısı
      olmalıydı.
   **Neyi çözmez:** hiçbiri uyarlanır bir saldırganı durdurmaz, maliyeti
-  yükseltir; ölçülmüş bir aşılma oranımız **yok**. Hakem bir güvenlik sınırı
-  değil, sahibin gözden geçirme yükünü azaltan bir katmandır.
+  yükseltir. Ölçüldü (2026-08-21, `_orch/judge_bypass_measure.py`, K=5 çok-denemeli,
+  KENDI 10-saldırılı korpus + gerçek Ollama): dağıtılan yolda **tam-yol aşılma 0/6**
+  (qwen2.5:7b ve mistral). Ham hakem tek başına güvenilmez ve `temp=0`'da bile
+  deterministik değil — mistral base64 saldırısına 5 denemenin 3'ünde kandı
+  (hakem-yalnız 3/50), qwen2.5:7b hiç kanmadı (0/50). **Alt sınır**, bağımsız değil
+  (bizim korpus/model, n=10, uyarlanır değil), ve yalnız **iç hakem/karantina
+  yolunu** ölçer — uçtan uca MCP yüzeyini değil. Hakem bir güvenlik sınırı değil,
+  sahibin gözden geçirme yükünü azaltan bir katmandır.
   (`tests/test_judge_adversarial.py`, 16 test)
 
 - **`pyproject.toml` bağımlılık beyanı `requirements.txt`'ten kaymıştı.**

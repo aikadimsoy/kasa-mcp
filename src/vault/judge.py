@@ -59,8 +59,16 @@ Buradan çıkan tasarım kararı:
 4. **Fail-closed.** Belirsizlik geçiş değildir.
 
 **Neyi çözmez:** bunların hiçbiri uyarlanır bir saldırganı durdurmaz, maliyeti
-yükseltir. Ölçülmüş bir aşılma oranımız **yok**. Hakem, sahibin gözden
-geçirmesini *azaltan* bir kolaylık katmanıdır; onun *yerini almaz*.
+yükseltir. Ölçüm (2026-08-21, `_orch/judge_bypass_measure.py`, KENDI 10-saldırılı
+korpusumuz + gerçek Ollama, K=5 çok-denemeli): dağıtılan yolda **tam-yol aşılma
+0/6** (qwen2.5:7b ve mistral). Ham hakem tek başına güvenilmez **ve temp=0'da bile
+deterministik değil**: mistral base64-gizlenmiş saldırıya 5 denemenin 3'ünde kandı
+(hakem-yalnız 3/50, 10 saldırının 1'inde yoğunlaşmış), qwen2.5:7b hiç kanmadı
+(0/50) — zayıflık modele bağlı ve koşudan koşuya kararsız; deterministik katman
+her durumu tuttu. Bu bir **alt sınırdır**, bağımsız değil (bizim korpus/bizim
+model, n=10, uyarlanır değil) ve yalnız **iç hakem/karantina yolunu** ölçer, uçtan
+uca MCP yüzeyini değil. Hakem, sahibin gözden geçirmesini *azaltan* bir kolaylık
+katmanıdır; onun *yerini almaz*.
 """
 
 from __future__ import annotations
