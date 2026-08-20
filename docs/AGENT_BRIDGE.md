@@ -16,6 +16,18 @@ adaptörü ile Claude Code/Goose/Cline KASA'ya bağlanabilir. Bulut-model ERTELE
      tüm authz (bearer + allow-list + rezerve-id + deny-by-default izin) aynen devrede.
    - Owner izin: `py tools/grant_agent_scope.py grant mcp_client audit:read` (system + admin:grant
      CLI'dan verilemez — yükselme kapısı).
+   - **TR-NOT (2026-08-20, canlı ölçüm):** yukarıdaki `audit:read` örneği doğru ama eksiksiz bir
+     kurulum reçetesi **değil**. Gerçek bir stdio MCP istemcisiyle koşuldu; iki şey ölçüldü:
+     - Hiçbir yetki verilmeden bağlanan istemci sağlam bir el sıkışma ve **her çağrıda HTTP 403**
+       alır (`Ajan 'legacy' için yazma izni yok`). Deny-by-default böyle görünüyor.
+     - **Düz `profile:read` hiçbir okumayı karşılamaz.** `tools.py:176` `profile_read` için
+       `profile:read:<kapsam>` sorar; `tools.py:324` `list_quarantined` için düz `profile:read`
+       sorar — aynı dize, iki anlam. İzin kontrolü tam eşitlik ya da `*` ile biten yetki aradığı
+       için düz yetki profil okumalarında eşleşmez. Ölçüldü: `grant my_agent profile:read`
+       sonrası çağrı 403; `profile:read:*` verilince aynı çağrı 200.
+       `grant_agent_scope.py` artık bu durumda uyarıyor (`tests/test_grant_scope_hint.py`).
+     - Tam reçete ve ölçülen çıktılar: `README.md` → "Connecting an AI client"
+       (Türkçesi `README.tr.md` → "Bir AI istemcisini bağlamak").
 
 2. **Ajan köprüsü** (`src/agent/`, exe-İÇİ):
    - `gate.py` — **elle carve-out** (güvenlik sınırı). Ad allow-list + **İÇERİK kapısı**
