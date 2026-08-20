@@ -83,3 +83,28 @@ _lab/
 .agents/
 scan_demo_result.md
 kasa_test_architecture_breakdown.md
+
+# --- Yayin-sertlestirme (2026-08-20): savunma desenleri + izlenmeyen-dosya karari ---
+# Baska AI araclarinin eval config'leri CANLI token tasiyabilir. OLCULDU: .codex/config.toml
+# icinde gercek bir KASA_MCP_TOKEN vardi; git add -A onu halka acik repoya sizdirirdi.
+# Bu desenler o sinifi ve genel sir dosyalarini savunma amacli dislar.
+.codex/
+.env
+.env.*
+*.key
+*.pem
+*.pfx
+*.p12
+
+# Uretilen raporlar / panolar / benchmark ciktilari — KAYNAK DEGIL (yukaridaki
+# "_orch runtime ciktilari" kuraliyla ayni gerekce). Hicbiri belgede anilmiyor
+# (olculdu: 0 atif). Diskte kalir, git izlemez.
+*.pdf
+_orch/dashboard.html
+_orch/kasa_vs_no_kasa_*.json
+
+# Deney betikleri: kaynak niteliginde ama DOGRULANMADI ve belgede anilmiyor (0 atif).
+# gitignore silmez; incelendikten sonra bilerek eklenebilir.
+_orch/test_llm_without_kasa.py
+_orch/test_mcp_namespace_hijack.py
+_orch/test_with_deepseek_agent.py
