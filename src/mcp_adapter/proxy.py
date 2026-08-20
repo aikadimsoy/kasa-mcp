@@ -107,9 +107,34 @@ def build_settings() -> dict:
     base_url = os.environ.get("KASA_SERVER_URL") or f"http://{host}:{port}"
     if not _is_loopback_url(base_url):
         raise ValueError("only loopback server URLs are allowed (air-gap)")
-    agent_id = os.environ.get("KASA_MCP_AGENT_ID", "mcp_client")
-    if agent_id == "system":
+    # Turkce not (2026-08-20): agent_id ARTIK kosulsuz "mcp_client" DEGIL.
+    #
+    # Olculdu (canli, izole vault + TestClient): sahip kimlik-bilgisiyle kosulan
+    # -- yani belgelenen varsayilan -- yolda sunucu kimligi LEGACY_AGENT_ID
+    # ("legacy") olarak cozer. Adaptor "mcp_client" beyan edince
+    # mcp_server/server.py:333 `claimed is not None and claimed != resolved`
+    # sartina takilir ve HER arac cagrisi HTTP 403 doner -- izin kapisina bile
+    # varmadan. Ayni koshuda agent_id="legacy" ve agent_id YOK halleri 200
+    # donuyordu; yani olum izin kapisinda degil kimlik kapisindaydi.
+    #
+    # Cozum sunucunun kendi tasarimindan: server.py:333 `claimed is None` halini
+    # BILEREK gecirir (beyan yok = catisma yok). Sahip kimlik-bilgisiyle kosan bir
+    # adaptorun beyan edecek BAGLI bir kimligi yoktur; o halde beyan etmez.
+    #
+    # Kullanici KASA_MCP_AGENT_ID'yi ACIKCA verdiyse beyan korunur ve yanlissa 403
+    # almasi DOGRUDUR: sessiz duzeltme, istemcinin yanlis kimlikle is yaptigini
+    # gizler ve denetim kaydini yanlis okutur (server.py:329-332 ayni gerekce).
+    #
+    # Regresyon kilidi: tests/test_mcp_adapter_contract.py
+    explicit_agent_id = os.environ.get("KASA_MCP_AGENT_ID")
+    if explicit_agent_id == "system":
         raise ValueError("agent id 'system' is reserved and refused")
+    if explicit_agent_id:
+        agent_id = explicit_agent_id
+    elif owner_credential:
+        agent_id = None          # beyan yok -> sunucu cozdugu kimligi kullanir
+    else:
+        agent_id = "mcp_client"  # ajan-bagli token: beyan edilen kimlik anlamlidir
     # owner_credential: cagiran taraf hangi kimlik-bilgisiyle kosuldugunu BILMELI (testler ve
     # seffaflik). Bu bir kapi DEGIL; kapi sunucudadir. Yalnizca durumun dogru raporlanmasi.
     return {"bearer": bearer, "base_url": base_url, "agent_id": agent_id,
@@ -119,10 +144,15 @@ def build_settings() -> dict:
 def execute(settings: dict, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
     """Proxy one tool call through the server's full authz stack. Returns the tool result
     dict, or raises ValueError with the server's error detail (MCP client sees the text)."""
-    body = json.dumps({
+    # Turkce not: agent_id None ise ANAHTAR HIC KONMAZ. JSON null gondermek de bir
+    # beyandir ve sunucu tarafinda `claimed is not None` sartini tetikleyebilir;
+    # "beyan yok" demek, alani hic yazmamaktir.
+    payload: dict[str, Any] = {
         "tool_calls": [{"tool_name": tool_name, "parameters": parameters}],
-        "agent_id": settings["agent_id"],
-    }).encode("utf-8")
+    }
+    if settings.get("agent_id") is not None:
+        payload["agent_id"] = settings["agent_id"]
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         f"{settings['base_url']}/v1/execute_tool",
         data=body,

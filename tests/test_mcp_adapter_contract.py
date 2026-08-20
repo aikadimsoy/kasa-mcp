@@ -164,3 +164,90 @@ def test_no_server_method_has_unfilled_required_param(monkeypatch, tmp_path):
         except TypeError as exc:
             broken.append("%s: %s" % (tool_name, exc))
     assert not broken, "Sunucu imzasina baglanamayan arac(lar):\n  " + "\n  ".join(broken)
+
+
+# ----------------------------------------------------------------------
+# KIMLIK BEYANI: adaptor beyan edemeyecegi bir kimligi beyan ediyor mu?
+#
+# Turkce not (2026-08-20, bulan: bagimsiz denetim turu, dogrulayan: canli TestClient
+# olcumu + bu dosya): Adaptor HER istek govdesine agent_id koyuyordu
+# (proxy.py:110,124) ve varsayilani "mcp_client" idi. Belgelenen geri-dusus yolunda
+# -- KASA_MCP_TOKEN yok, kasa.toml'daki SAHIP token'i kullaniliyor -- sunucu kimligi
+# LEGACY_AGENT_ID = "legacy" olarak cozuyor. Sonra server.py:333 devreye giriyor:
+#     if claimed is not None and claimed != resolved:  -> HTTP 403
+# Yani "mcp_client" beyani ile "legacy" cozumu catisiyor ve arac cagrisi IZIN
+# kapisina bile varmadan KIMLIK kapisinda oluyor.
+#
+# Canli olculdu (izole vault, TestClient): ayni istekte
+#     agent_id="mcp_client" -> 403   |   agent_id="legacy" -> 200   |   agent_id yok -> 200
+# ve izin HER IKI kimlige verildikten SONRA bile "mcp_client" 403 kaliyor -- yani
+# olum izin kapisinda degil, kimlik kapisinda.
+#
+# Cozum sunucunun kendi tasarimindan geliyor: server.py:333 `claimed is None` halini
+# BILEREK gecirir (beyan yok = catisma yok). Adaptor sahip kimlik-bilgisiyle kosarken
+# beyan edecek bagli bir kimlige sahip DEGILDIR; o halde beyan etmemelidir.
+# Kullanici KASA_MCP_AGENT_ID'yi ACIKCA verdiyse beyan gonderilir ve yanlissa 403
+# almasi DOGRUDUR -- sessiz duzeltme denetim kaydini yanlis okutur.
+# ----------------------------------------------------------------------
+def test_owner_fallback_declares_no_agent_id(monkeypatch, tmp_path):
+    """Sahip kimlik-bilgisi geri-dususunde adaptor kimlik BEYAN ETMEMELI."""
+    from src.mcp_adapter import proxy
+
+    cfg = tmp_path / "kasa.toml"
+    cfg.write_text(
+        '[server]\nbearer_token = "owner-token"\nhost = "127.0.0.1"\nport = 8000\n',
+        encoding="utf-8")
+    monkeypatch.delenv("KASA_MCP_TOKEN", raising=False)
+    monkeypatch.delenv("KASA_MCP_AGENT_ID", raising=False)
+    monkeypatch.setenv("KASA_CONFIG", str(cfg))
+
+    st = proxy.build_settings()
+    assert st["owner_credential"] is True, "bu test geri-dusus yolunu olcmeli"
+    assert st["agent_id"] is None, (
+        "Sahip token'iyla kosarken adaptor 'mcp_client' beyan ediyor; sunucu kimligi "
+        "'legacy' cozer ve server.py:333 -> HTTP 403. Beyan edilecek bagli kimlik yok.")
+
+
+def test_explicit_agent_id_is_still_declared(monkeypatch, tmp_path):
+    """Kullanici kimligi ACIKCA verdiyse beyan korunur (sessiz duzeltme yapilmaz)."""
+    from src.mcp_adapter import proxy
+
+    cfg = tmp_path / "kasa.toml"
+    cfg.write_text(
+        '[server]\nbearer_token = "owner-token"\nhost = "127.0.0.1"\nport = 8000\n',
+        encoding="utf-8")
+    monkeypatch.delenv("KASA_MCP_TOKEN", raising=False)
+    monkeypatch.setenv("KASA_MCP_AGENT_ID", "research_agent")
+    monkeypatch.setenv("KASA_CONFIG", str(cfg))
+
+    assert proxy.build_settings()["agent_id"] == "research_agent"
+
+
+def test_request_body_omits_agent_id_when_none(monkeypatch):
+    """agent_id None ise govdede ANAHTAR HIC BULUNMAMALI (None gondermek de beyandir)."""
+    import json as _json
+    from src.mcp_adapter import proxy
+
+    captured = {}
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b'{"results": [{"status": "ok"}]}'
+
+    def _fake_urlopen(req, timeout=None):
+        captured["body"] = _json.loads(req.data.decode("utf-8"))
+        return _Resp()
+
+    monkeypatch.setattr(proxy.urllib.request, "urlopen", _fake_urlopen)
+    settings = {"bearer": "t", "base_url": "http://127.0.0.1:8000",
+                "agent_id": None, "owner_credential": True}
+    try:
+        proxy.execute(settings, "profile_read", {"scope": "user.*", "reason": "test"})
+    except Exception:
+        pass  # yanit sekli bu testin konusu degil; olculen sey GONDERILEN govde
+
+    assert "body" in captured, "istek hic gonderilmedi"
+    assert "agent_id" not in captured["body"], (
+        "agent_id=None govdeye yazilmis; server.py:333 `claimed is not None` ile "
+        "gecit veriyor, JSON null gondermek beyan sayilabilir. Anahtar hic olmamali.")
