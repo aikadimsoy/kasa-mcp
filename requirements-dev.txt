@@ -12,3 +12,15 @@
 -r requirements.txt
 
 pytest>=8.0
+
+# Turkce not (2026-08-20): Bu ucu de CI kuruyordu (.github/workflows/tests.yml:76)
+# ama kurulum belgesi kurmuyordu. Sonuc: docs/REPRODUCE.md'yi harfiyen izleyen bir
+# denetci once "No module named pytest", duzeltildikten sonra "No module named
+# webview" aliyordu -- yani "kendin dogrula" sayfasi hala kosmuyordu. Eksigin
+# yarisini kapatmak, kapatmamakla ayni sonucu verir.
+#
+#   httpx     -> fastapi.testclient (TestClient) bunu ister; tests/conftest.py:21
+#   pywebview -> src/browser/browser_window.py:1 'import webview'; tarayici
+#                katmani KAPALI gelse bile modul import edilir, yoksa toplama coker
+httpx>=0.27
+pywebview>=5.0

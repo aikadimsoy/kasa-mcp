@@ -106,9 +106,27 @@ def event_ingest(source: str, type: str, content: dict, ttl_days: int = 30) -> d
 
 
 @mcp.tool(annotations=_READ)
-def profile_read(scope: str) -> dict:
-    """Read profile keys (supports 'user.*' wildcard). Requires 'profile:read:<scope>'."""
-    return _execute("profile_read", {"scope": scope})
+def profile_read(scope: str, reason: str) -> dict:
+    """Read profile keys (supports 'user.*' wildcard). Requires 'profile:read:<scope>'.
+
+    `reason` is a contextual ticket: state, in one short phrase, why this read is
+    needed. It is written verbatim into the audit chain next to your agent id, so
+    the owner can later see not just that memory was read but what it was read for.
+    An empty reason is refused by the server.
+    """
+    # Turkce not (2026-08-20): `reason` BILEREK bu aracin parametresi yapildi,
+    # sabit bir degerle otomatik doldurulmadi. Sunucu (tools.py:104,119) bu alani
+    # zorunlu kilar ve denetim zincirine YAZAR; sabit bir dize koymak testi
+    # yesile alirdi ama alanin tek amacini -- atif ve hesap verebilirlik --
+    # yok ederdi. Cagiran sebebini beyan eder.
+    #
+    # Bu satirin gecmisi: adaptor `reason` gondermiyordu; sunucu `method(**params)`
+    # ile cagirdigi icin eksik zorunlu argüman TypeError -> HTTP 422 uretiyordu.
+    # Yani bir modelin yapabilecegi en temel islem (hafizayi okumak) her seferinde
+    # basarisizdi. 2026-08-05'te canli HTTP ile olculdu
+    # (docs/KASA_WORKCELL_RAPOR_DEGERLENDIRME_2026-08-05.md), 2026-08-20'de
+    # duzeltildi. Regresyon kilidi: tests/test_mcp_adapter_contract.py
+    return _execute("profile_read", {"scope": scope, "reason": reason})
 
 
 # destructiveHint=True: bir anahtari yeniden yazmak ONCEKI degeri yok eder. MCP tanimina gore

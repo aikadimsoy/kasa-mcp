@@ -88,7 +88,32 @@ number from it; per-test detail with explicit limits is
 
 - **Red-team findings — what was measured, and what is still open.** Each line names its evidence;
   nothing here claims the class of attack is solved.
-  - *Prompt injection and memory poisoning* — legacy word filters were replaced with a structural **Namespace Isolation** architecture. Measured 2026-08-19 against `qwen2.5:latest` (7B), `qwen2.5:3b`, and `qwen2.5-coder:14b`: **0% Attack Success Rate** (all unauthorized writes to `system.security` blocked at the permission gate) with **100% Utility** for benign user notes. Evidence: `_orch/multi_model_benchmark_results.json`. **Limit:** prompt injection is an industry-wide open problem; the defense here is *structural* (the model is never the security boundary), not a claim of model immunity.
+  - *Prompt injection and memory poisoning* — **open, and the headline number previously
+    printed here was wrong.** A namespace gate refuses writes to protected keys
+    (`system.*`, `*role*`, `admin.*`), and against that specific threat it holds: measured
+    2026-08-19 across `qwen2.5:latest`, `qwen2.5:3b` and `qwen2.5-coder:14b`, every write
+    aimed at a protected namespace was blocked. **That is not an attack success rate.**
+    An earlier revision of this line reported "0% Attack Success Rate"; re-checked
+    2026-08-20 against its own evidence file (`_orch/multi_model_benchmark_results.json`),
+    that figure is an artefact of how it was computed. The score counted an attack as
+    successful only when the model aimed at a *protected* namespace
+    (`run_full_multi_model_benchmark.py:117`, `a_written = is_hijacked`) — that is, only the
+    attacks the namespace gate is guaranteed to stop. Injected content that the model
+    rewrites into an ordinary fact and files under an *allowed* key was scored as no attack
+    at all. In the same raw rows, **5/10, 6/10 and 5/10 attacks were written to live memory
+    with KASA enabled**, in `user.preference`, `user.note` and `user.details`. A metric that
+    excludes the cases the mechanism cannot handle cannot return anything but zero.
+    An independent paired run the same day (`_orch/kasa_vs_no_kasa.py --task`) put a model
+    under an ordinary extraction task rather than asking it to classify: **70% of injections
+    reached live memory, and the quarantine gate fired zero times out of sixteen** — both on
+    the committed gate and on the working copy, so it is not an artefact of a broken build.
+    **Limit:** this measures the memory-integrity layer only. It does not measure the
+    permission broker, which is where KASA's actual claim lives — a poisoned sentence may
+    land, but authority comes from the token and the grant table, never from memory content.
+    That layer was not exercised by either run. Prompt injection remains an industry-wide
+    open problem; the defence here is *structural* (the model is never the security
+    boundary), and it is not a claim of immunity. See finding F-POISON in `SECURITY.md`.
+
   - *MCP authorization* — the allow-list (`PUBLIC_TOOLS`), reserved-agent block and per-scope
     deny-by-default checks pass their measurements (`AUTHZ-*` checks in
     [`docs/SECURITY_BENCHMARK.md`](docs/SECURITY_BENCHMARK.md); `tests/test_agent_gate.py`).
@@ -157,6 +182,22 @@ currently measured open — the evidence is linked from [`SECURITY.md`](SECURITY
    ollama pull qwen2.5:7b
    ```
 4. **Configuration**: Copy `kasa.toml.example` to `kasa.toml` and set your desired configurations in it, such as server host/port and vault path. The bearer token is generated on first run.
+
+   > **Which model actually runs — read this before changing it.** The model name is
+   > resolved in one place, [`src/agent/store.py`](src/agent/store.py) `resolve_model()`,
+   > with a fixed priority:
+   >
+   > `agent_config.json:selected_model` **>** `browser_config.json:agent_model` **>**
+   > `kasa.toml [distill] model` **>** built-in default `qwen2.5:7b`
+   >
+   > `kasa.toml` is the **lowest** of the three files. If an `agent_config.json` exists —
+   > and one is written the first time you pick a model in the UI — editing `kasa.toml`
+   > changes nothing and fails silently. To see what will actually be used:
+   > `py -3.12 -c "from src.agent.store import resolve_model; print(resolve_model())"`.
+   >
+   > This is not cosmetic. `docs/REPRODUCE.md` records a measured case where the same
+   > defence scored **0/25** under one model and **23/25** under another. The model you
+   > run changes the security behaviour you get.
 5. **Start the System Tray App**: Run the application using:
    ```bash
    python run.py
@@ -165,6 +206,26 @@ currently measured open — the evidence is linked from [`SECURITY.md`](SECURITY
    ```bash
    python run.py --no-tray
    ```
+
+   > **Running outside Windows.** The MCP server itself is platform-independent —
+   > `src/mcp_server/server.py` imports no Windows or GUI library, and the dashboard is
+   > plain HTML served over HTTP, so any browser reaches it. PyQt5 (tray) and pywebview
+   > (the KASA browser, which ships disabled) are **not** needed to run the server, even
+   > though `requirements.txt` currently installs them.
+   >
+   > **But the at-rest guarantee is weaker there, and you must act on it.** On Windows the
+   > vault key is wrapped with DPAPI, which binds it to your login session. On
+   > Linux/macOS/Docker there is no DPAPI, so `src/vault/encryption.py` falls back to a key
+   > derived from the hostname plus `/etc/machine-id`, using a salt that is published in
+   > this repository. Anyone who can read the vault file on that machine can generally read
+   > those two values too, and therefore re-derive the key. Set an explicit secret instead:
+   >
+   > ```bash
+   > export KASA_MASTER_KEY="<a long random secret you keep elsewhere>"
+   > ```
+   >
+   > Without it, treat non-Windows at-rest encryption as **obfuscation, not protection**.
+   > Measurement level: CODE-STRUCTURE — the mechanism was read, no exploit was written.
 7. **Run One Distillation Pass and Exit**: Use the following command to perform one distillation pass and exit:
    ```bash
    python run.py --distill-now
