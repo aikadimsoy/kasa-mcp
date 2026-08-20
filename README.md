@@ -209,20 +209,31 @@ currently measured open — the evidence is linked from [`SECURITY.md`](SECURITY
    ```
 
    > **Server / MCP-adapter only (no GUI).** `requirements.txt` is the full Windows desktop
-   > install and pulls in PyQt5 (~100 MB) for the tray app. If all you want is the vault server
-   > and the MCP adapter — a container, CI, or a headless box — install the package instead:
+   > install and pulls in PyQt5 (~100 MB) for the tray app. A headless / server-only setup
+   > (container, CI, no desktop) does **not** need PyQt5.
+   >
+   > **KASA runs from source — there is no `pip install kasa`.** `pyproject.toml` deliberately
+   > omits a `[build-system]`: the code uses a flat run-from-root layout (`run.py`, and `src.*`
+   > imported with the repo root on `sys.path`). Measured 2026-08-20 in a clean Python-3.12
+   > venv: `pip install .` *builds a wheel* (exit 0) but lays the package out so that
+   > `import src.mcp_server.server` then fails with `No module named 'src'`; `pip install -e .`
+   > fails the same way. Making the project pip-installable is a src-layout migration that has
+   > **not** been decided. So for headless, install the core dependencies (everything in
+   > `requirements.txt` **except** PyQt5 — the same set declared under `[project.dependencies]`)
+   > and run from the repo root:
    >
    > ```bash
-   > pip install .            # core: server + MCP adapter
-   > pip install ".[desktop]" # adds the PyQt5 tray app
+   > pip install fastapi uvicorn pydantic cryptography "mcp>=1.2,<2"
+   > python -m src.mcp_server.server        # or:  python -m src.mcp_adapter
    > ```
    >
    > Measured 2026-08-20: with `PyQt5` and `webview` imports blocked, `src.mcp_server.server`
-   > and `src.mcp_adapter.__main__` both import cleanly; only `src/tray/app.py` and `run.py`
-   > need PyQt5. The split is held by [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py),
-   > which also pins `mcp>=1.2,<2` in **both** files — `mcp` 2.0 removed `mcp.server.fastmcp`,
-   > which the adapter imports, so an unbounded `mcp` requirement makes the adapter
-   > un-importable. The DPAPI and Python-3.12 notes above still apply to the desktop path.
+   > and `src.mcp_adapter.__main__` import cleanly **from the repo root**; only `src/tray/app.py`
+   > and `run.py` need PyQt5. The core-vs-desktop dependency split is declared in `pyproject.toml`
+   > (`[project.optional-dependencies].desktop`) and held by
+   > [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py), which also pins
+   > `mcp>=1.2,<2` in **both** dependency lists — `mcp` 2.0 removed `mcp.server.fastmcp`, which
+   > the adapter imports. The DPAPI and Python-3.12 notes above still apply to the desktop path.
 3. **Local Ollama Runtime** (optional, needed only for distillation): install Ollama separately from https://ollama.com, then pull the model and make sure it serves at http://localhost:11434:
    ```bash
    ollama pull qwen2.5:7b

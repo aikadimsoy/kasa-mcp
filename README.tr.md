@@ -183,23 +183,32 @@ madde bugün ölçümle açık olan bir boşluğu kapatır; kanıtlar [`SECURITY
    ```
 
    > **Yalnız sunucu / MCP adaptörü (GUI'siz).** `requirements.txt` tam Windows masaüstü
-   > kurulumudur ve tepsi uygulaması için PyQt5'i (~100 MB) de çeker. Yalnızca kasa sunucusunu ve
-   > MCP adaptörünü istiyorsanız — konteyner, CI ya da başsız bir makine — paketin kendisini
-   > kurun:
+   > kurulumudur ve tepsi uygulaması için PyQt5'i (~100 MB) de çeker. Başsız / yalnız-sunucu bir
+   > kurulum (konteyner, CI, masaüstü yok) PyQt5'e **ihtiyaç duymaz.**
+   >
+   > **KASA kaynaktan çalışır — `pip install kasa` YOKTUR.** `pyproject.toml` bilerek bir
+   > `[build-system]` içermez: kod, kökten-çalışan düz bir düzen kullanır (`run.py`, ve repo
+   > kökü `sys.path`'te iken import edilen `src.*`). Temiz bir Python-3.12 venv'inde ölçüldü
+   > (2026-08-20): `pip install .` bir wheel **derler** (çıkış 0) ama paketi öyle yerleştirir ki
+   > `import src.mcp_server.server` sonra `No module named 'src'` ile başarısız olur;
+   > `pip install -e .` de aynı biçimde başarısız. Projeyi pip-kurulabilir yapmak, **henüz
+   > verilmemiş** bir src-layout kararıdır. Bu yüzden başsız için çekirdek bağımlılıkları
+   > (`requirements.txt`'teki PyQt5 **hariç** her şey — `[project.dependencies]` altında beyan
+   > edilen küme) kur ve repo kökünden çalıştır:
    >
    > ```bash
-   > pip install .            # çekirdek: sunucu + MCP adaptörü
-   > pip install ".[desktop]" # PyQt5 tepsi uygulamasını da ekler
+   > pip install fastapi uvicorn pydantic cryptography "mcp>=1.2,<2"
+   > python -m src.mcp_server.server        # ya da:  python -m src.mcp_adapter
    > ```
    >
    > Ölçüldü (2026-08-20): `PyQt5` ve `webview` import'ları bloklandığında
-   > `src.mcp_server.server` ve `src.mcp_adapter.__main__` sorunsuz import ediliyor; PyQt5'e
-   > yalnız `src/tray/app.py` ve `run.py` ihtiyaç duyuyor. Bölünmeyi
-   > [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py) tutuyor; aynı test
-   > `mcp>=1.2,<2` sınırını **her iki** dosyada da sabitliyor — `mcp` 2.0 adaptörün import ettiği
-   > `mcp.server.fastmcp` modülünü kaldırdı, yani üst sınırsız bir `mcp` gereksinimi adaptörü
-   > import edilemez hâle getiriyor. Yukarıdaki DPAPI ve Python 3.12 notları masaüstü yolu için
-   > geçerliliğini koruyor.
+   > `src.mcp_server.server` ve `src.mcp_adapter.__main__` **repo kökünden** sorunsuz import
+   > ediliyor; PyQt5'e yalnız `src/tray/app.py` ve `run.py` ihtiyaç duyuyor. Çekirdek/masaüstü
+   > bağımlılık bölünmesi `pyproject.toml`'da (`[project.optional-dependencies].desktop`) beyan
+   > edilir ve [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py) tutar; aynı
+   > test `mcp>=1.2,<2` sınırını **her iki** listede de sabitler — `mcp` 2.0 adaptörün import
+   > ettiği `mcp.server.fastmcp` modülünü kaldırdı. Yukarıdaki DPAPI ve Python 3.12 notları
+   > masaüstü yolu için geçerliliğini korur.
 3. **Yerel Ollama Çalışma Zamanı** (isteğe bağlı, yalnız damıtma için gerekir): Ollama'yı https://ollama.com adresinden ayrıca kurun, ardından modeli çekin ve http://localhost:11434 adresinde servis verdiğinden emin olun:
    ```bash
    ollama pull qwen2.5:7b

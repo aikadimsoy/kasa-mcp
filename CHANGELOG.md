@@ -52,8 +52,10 @@ koda ait. Üçü de kod okunarak değil, önce kırmızı test yazılarak bulund
   değil, sahibin gözden geçirme yükünü azaltan bir katmandır.
   (`tests/test_judge_adversarial.py`, 16 test)
 
-- **`pip install .` ile kuran kullanıcının MCP adaptörü import edilemiyordu.**
-  `pyproject.toml`'daki bağımlılık bloğunun üstünde *"requirements.txt'ten
+- **`pyproject.toml` bağımlılık beyanı `requirements.txt`'ten kaymıştı.**
+  (Not: `pip install .` KASA'da zaten desteklenen bir yol değil — aşağıdaki
+  "Düzeltildi: kaynaktan-çalışan" maddesine bakın. Buradaki kusur, `pyproject`
+  bağımlılık **beyanının** tutarlılığıydı.) Bloğun üstünde *"requirements.txt'ten
   AYNEN kopyalandı (sürüm sınırları dahil)"* yazıyordu; kopya kaymıştı:
   `requirements.txt` `mcp>=1.2,<2` derken `pyproject.toml` yalnız `mcp>=1.2`
   diyordu. Ölçüldü: `mcp`'nin PyPI'daki en yenisi **2.0.0** ve
@@ -69,13 +71,21 @@ koda ait. Üçü de kod okunarak değil, önce kırmızı test yazılarak bulund
   import'ları bloklandığında `src.mcp_server.server`,
   `src.mcp_adapter.__main__`, `src.mcp_server.tools` ve `src.vault.database`
   sorunsuz import edildi; PyQt5'e dokunan yalnız `src/tray/app.py` ve `run.py`
-  (masaüstü başlatıcılar). Yani sunucuyu/MCP adaptörünü kullanmak isteyen
-  birine ~100 MB'lik bir GUI kütüphanesi zorunlu tutuluyordu ve PyQt5 tekerleği
-  olmayan bir ortamda `pip install .` tamamen başarısız oluyordu. Artık:
-  `pip install .` çekirdek, `pip install ".[desktop]"` tepsi uygulamasını da
-  kurar. `requirements.txt` **değişmedi** (sahibin Windows masaüstü kurulumu ve
-  CI onu kurar); kayma olmasın diye eşitlik testi
+  (masaüstü başlatıcılar). Bölünme `pyproject.toml`'da `[project.dependencies]`
+  (çekirdek, PyQt5'siz) + `[project.optional-dependencies].desktop` (PyQt5)
+  olarak **beyan** edilir. `requirements.txt` **değişmedi** (sahibin Windows
+  masaüstü kurulumu ve CI onu kurar); kayma olmasın diye eşitlik testi
   `requirements.txt == dependencies + desktop` biçiminde kuruldu.
+
+  > **Düzeltme (2026-08-20, sonradan ölçüldü):** bu maddenin ilk hâli
+  > *"artık `pip install .` çekirdek, `pip install ".[desktop]"` tepsi kurar"*
+  > diyordu. **Yanlıştı** ve düzeltildi. Temiz bir 3.12 venv'inde ölçüldü:
+  > `pip install .` bir wheel derler (çıkış 0) ama paketi öyle yerleştirir ki
+  > `import src.mcp_server.server` `No module named 'src'` ile başarısız olur;
+  > `pip install -e .` de aynı. KASA **kaynaktan-çalışan** bir projedir
+  > (`pyproject.toml` bilerek `[build-system]` içermez). Bölünme yine geçerli —
+  > ama bir **beyan tutarlılığı** olarak, bir kurulum yolu olarak değil. Gerçek
+  > başsız yöntem README'de: çekirdek bağımlılıkları kur + repo kökünden çalıştır.
 
 ### Belgelendi
 
