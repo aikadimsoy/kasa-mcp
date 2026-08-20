@@ -108,3 +108,8 @@ _orch/kasa_vs_no_kasa_*.json
 _orch/test_llm_without_kasa.py
 _orch/test_mcp_namespace_hijack.py
 _orch/test_with_deepseek_agent.py
+
+# Python build artifacts (pip install . / setuptools uretir) — kaynak degil.
+build/
+dist/
+*.egg-info/
