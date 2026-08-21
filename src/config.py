@@ -105,25 +105,40 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def resolve_config_path() -> Path:
+    """Tek dogruluk kaynagi: server ve adapter AYNI config dosyasini cozsun diye
+    kullanilan ORTAK cozucu. Precedence (ChatGPT operator karari, 2026-08-21):
+      1. KASA_CONFIG env acikca verilmisse -> onu kullan (test izolasyonu da bu)
+      2. ~/.kasa/kasa.toml mevcutsa        -> onu kullan
+      3. ./kasa.toml mevcutsa              -> kaynak/dev geriye uyumluluk
+      4. hicbiri yoksa                     -> ~/.kasa/kasa.toml (olusturma hedefi)
+
+    Turkce not (paketleme, 2026-08-21): server.py eskiden __file__ uzerinden
+    repo_root/kasa.toml kuruyordu; wheel kurulunca bu site-packages/kasa.toml'a
+    kayiyor ve (a) kullanici secret'i site-packages'a yaziliyor, (b) adapter
+    load_config() ~/.kasa'ya bakip AYRI dosya cozuyordu -> "kurulum basarili ama
+    MCP kirik". Ortak cozucu bu ikiligi kapatir; server'in urettigi owner token
+    ile adapter'in aradigi token ayni dosyadan gelir. site-packages'a ASLA yazilmaz.
+    """
+    env = os.environ.get("KASA_CONFIG")
+    if env:
+        return Path(env)
+    home_cfg = Path.home() / ".kasa" / "kasa.toml"
+    if home_cfg.exists():
+        return home_cfg
+    local_cfg = Path("./kasa.toml")
+    if local_cfg.exists():
+        return local_cfg
+    return home_cfg
+
+
 def load_config(config_path: Path = None) -> dict:
     if config_path is None:
-        env = os.environ.get("KASA_CONFIG")
-        if env:
-            config_path = Path(env)
-        else:
-            candidates = [
-                Path.home() / ".kasa" / "kasa.toml",
-                Path("./kasa.toml"),
-            ]
-            for p in candidates:
-                if p.exists():
-                    config_path = p
-                    break
+        config_path = resolve_config_path()
 
-    if config_path is None or not config_path.exists():
-        target = config_path or (Path.home() / ".kasa" / "kasa.toml")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _write_toml(DEFAULT_CONFIG, target)
+    if not config_path.exists():
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_toml(DEFAULT_CONFIG, config_path)
         return dict(DEFAULT_CONFIG)
 
     loaded = _load_toml(config_path)

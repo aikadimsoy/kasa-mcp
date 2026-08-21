@@ -160,5 +160,11 @@ def prune_expired_events() -> dict:
     return _execute("prune_expired_events", {})
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console entry-point (`kasa-mcp`) ve `-m src.mcp_adapter` icin ortak giris.
+    Davranis korunur: yalnizca mcp.run() sarmalandi (ChatGPT operator onayi 2026-08-21)."""
     mcp.run()  # stdio transport (varsayilan)
+
+
+if __name__ == "__main__":
+    main()

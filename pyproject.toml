@@ -1,19 +1,24 @@
-# KASA - proje meta verisi + pytest yapilandirmasi.
+# KASA - proje meta verisi + build/paketleme + pytest yapilandirmasi.
 #
-# TR-NOT (ogretici, ASCII-Turkce: TOML icinde ozel karakter YOK - Windows konsolu cp1254):
-# Bu dosya SADECE meta veri ve test ayari icerir. Bilerek bir [build-system] tablosu
-# EKLENMEDI, cunku depo su an "duz calistirma" duzeninde: kok dizindeki run.py /
-# kasa_app.py, kok dizini sys.path'e alarak 'src.*' paketlerini import eder
-# (ornek: run.py:14 'from src.vault.database import Vault'). Bir derleme arka ucu ve
-# paket kesfi tanimlamak, paket duzeni hakkinda HENUZ VERILMEMIS bir karar gerektirir
-# (src-layout'a tasima) ve mevcut import'lari sessizce kirabilir. Kural: emin degilsen
-# minimal tut. Wheel/sdist uretmek gerektiginde bu karar ayri alinmalidir.
+# TR-NOT (ASCII-Turkce: TOML icinde ozel karakter YOK - Windows konsolu cp1254):
+# PAKETLEME (2026-08-21, ChatGPT operator karari + RAN-LIVE olcum):
+# Eskiden burada [build-system] YOKTU ve bu not "pip install . desteklenmiyor;
+# setuptools GURULTULU hata verir" diyordu. Olcum bunu CURUTTU: `pip install .`
+# EXIT 0 ile SESSIZCE calisip KODSUZ (yalniz metadata) bir wheel uretiyordu --
+# kullanici icin en kotu hal ("kuruldu" ama import edilecek modul yok).
 #
-# SONUC: 'pip install .' desteklenmiyor. Beklenti (DENENMEDI, bu bir olcum degil):
-# setuptools duz-duzende birden fazla ust duzey dizin gorup hata verir. Sessiz degil
-# gurultulu bir hata beklenir; birisi 'pip install .' denerse ve baska bir sey olursa
-# bu not duzeltilmelidir. Desteklenen kurulum yolu README'dekidir:
-# pip install -r requirements.txt + python run.py
+# Cozum, paket AGACINI TASIMADAN (src.* import'lari korunur, src bir gercek
+# pakettir): asagidaki [build-system] + [tool.setuptools.packages.find] wheel'e
+# `src` ve tum `src.*` alt-paketlerini koyar; [project.scripts] iki console
+# entry-point verir (kasa-server, kasa-mcp). "src -> kasa" yeniden adlandirmasi
+# BILEREK YAPILMADI (ayri, verilmemis bir karar). Desteklenen iki yol artik:
+#   (a) kaynaktan: pip install -r requirements.txt + python run.py (repo kokunden)
+#   (b) paket:     pip install . + kasa-server / kasa-mcp (repo disindan da)
+# Dogrulama fresh-venv E2E ile yapilir; "EXIT 0" tek basina PASS DEGILDIR.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "kasa"
@@ -132,6 +137,22 @@ test = [
 desktop = [
     "PyQt5>=5.15.0",
 ]
+
+# CONSOLE ENTRY-POINT'LER (2026-08-21). Paket kurulunca (pip install .) iki komut:
+#   kasa-server -> src/mcp_server/server.py:start_server (host/port config'ten)
+#   kasa-mcp    -> src/mcp_adapter/__main__.py:main (stdio MCP adaptoru)
+# Boylece "repo kokunden -m src.X" sarti kalkar; komutlar repo DISINDAN da calisir.
+[project.scripts]
+kasa-server = "src.mcp_server.server:start_server"
+kasa-mcp = "src.mcp_adapter.__main__:main"
+
+# PAKET KESFI: src bir gercek pakettir ve `src.*` olarak import edilir (STRIP EDILMEZ).
+# where=["."] + include=["src*"] -> wheel'e `src` ve tum `src.*` alt-paketleri girer.
+# tools/ paketlenmez (src icinde 'tools.' importu YOK -- olculdu); dashboard_ui/ ve
+# assets/ Python-disi veri, ayri PACKAGING-UX konusu (bu commit MCP cekirdegini hedefler).
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 
 # [project.urls]
 # TR-NOT: public depo adresi henuz kesin degil; UYDURULMADI. Sahip depoyu actiktan

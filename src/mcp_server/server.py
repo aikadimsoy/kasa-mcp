@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..vault.database import Vault
 from .tools import VaultTools
-from ..config import load_config, get_or_create_bearer_token
+from ..config import load_config, get_or_create_bearer_token, resolve_config_path
 import pathlib
 
 # -- Pydantic Modelleri (API şeması için) --
@@ -62,9 +62,12 @@ class SimpleToolRequest(BaseModel):
 # -- Bağımlılıklar (Dependencies) --
 
 # Config önce yüklenir — VAULT_PATH ve token burada belirlenir.
-# KASA_CONFIG env (varsa) onceliklidir -> paketlenmis app config'i %APPDATA%\KASA'ya yonlendirir
-# (frozen bundle icindeki salt-okunur kasa.toml yerine kalici, yazilabilir konum).
-_CONFIG_PATH = pathlib.Path(os.environ.get("KASA_CONFIG") or (pathlib.Path(__file__).parent.parent.parent / "kasa.toml"))
+# ORTAK cozucu (config.resolve_config_path): KASA_CONFIG > ~/.kasa/kasa.toml >
+# ./kasa.toml > (olustur) ~/.kasa/kasa.toml. Eskiden burasi __file__ uzerinden
+# repo_root/kasa.toml kuruyordu; wheel kurulunca site-packages/kasa.toml'a kayip
+# adapter'la AYRI dosya cozuyordu (olculdu 2026-08-21). Adapter (proxy.build_settings
+# -> load_config()) ayni cozucuyu kullanir; owner token tek dosyadan gelir.
+_CONFIG_PATH = resolve_config_path()
 _cfg = load_config(_CONFIG_PATH)
 _BEARER_TOKEN = get_or_create_bearer_token(_cfg, _CONFIG_PATH)
 _ALLOWED_ORIGINS = _cfg["server"]["allowed_origins"]
