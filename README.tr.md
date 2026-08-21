@@ -387,3 +387,8 @@ KASA **çift lisanslıdır**:
   Koşullar: [`COMMERCIAL.md`](COMMERCIAL.md).
 
 Yazara atıf, her iki seçenekte de projede kalır.
+
+---
+
+**KASA** — Windows'ta yapay zekâ ajanları için yerel-öncelikli, izin-brokerli hafıza kasası.
+Yazar: Erhan Kadimsoy — [@aikadimsoy](https://github.com/aikadimsoy) · Depo: <https://github.com/aikadimsoy/kasa-mcp>
