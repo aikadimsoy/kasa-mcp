@@ -22,9 +22,12 @@ ayni vault'u oradan cozer.
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
+import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -32,6 +35,7 @@ PORT = int(os.environ.get("KASA_E2E_PORT", "8000"))
 BASE = f"http://127.0.0.1:{PORT}"
 SCRIPTS = Path(sys.executable).parent  # venv Scripts/ (exe'ler burada)
 EXE = ".exe" if os.name == "nt" else ""
+_SRV_LOG = os.path.join(tempfile.gettempdir(), "kasa_e2e_server.log")
 
 
 def _exe(name):
@@ -74,11 +78,97 @@ def wait_health(timeout=40):
 
 
 def start_server():
-    p = subprocess.Popen([_exe("kasa-server")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # stdout DOSYAYA yazilir -> launch nonce (Owner panosu URL'i) oradan okunur.
+    f = open(_SRV_LOG, "w", encoding="utf-8", errors="replace")
+    p = subprocess.Popen([_exe("kasa-server")], stdout=f, stderr=subprocess.STDOUT)
     if not wait_health():
         p.terminate()
         _fail("kasa-server health vermedi")
     return p
+
+
+def read_launch_nonce(timeout=15):
+    """kasa-server stdout'undaki 'Owner panosu: .../dashboard?k=<nonce>' satirindan nonce."""
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            txt = open(_SRV_LOG, encoding="utf-8", errors="replace").read()
+        except Exception:
+            txt = ""
+        m = re.search(r"/dashboard\?k=([A-Za-z0-9_\-]+)", txt)
+        if m:
+            return m.group(1)
+        time.sleep(0.5)
+    _fail("launch nonce stdout'ta bulunamadi")
+
+
+def get_owner_bearer():
+    """Owner bearer'i config'ten cozer (subprocess: import src site-packages'tan)."""
+    code = ("from src.config import load_config, resolve_bearer_token;"
+            "print(resolve_bearer_token(load_config()))")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    b = (out.stdout or "").strip().splitlines()[-1].strip() if out.stdout.strip() else ""
+    if out.returncode != 0 or not b:
+        _fail(f"owner bearer okunamadi: {out.stderr[:200]}")
+    return b
+
+
+def _http_get(path, headers=None, k=None):
+    url = BASE + path + (f"?k={k}" if k else "")
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+    except Exception as e:
+        return 0, str(e)
+
+
+def dashboard_checks(nonce, owner_bearer, agent_token):
+    """ChatGPT P1a dashboard PASS kriterleri (packaged owner dashboard + guvenlik)."""
+    d = {}
+    # /dashboard?k=<gecerli nonce> -> 200 + icerik + owner token ENJEKTE
+    s, body = _http_get("/dashboard", k=nonce)
+    d["dashboard_valid_200"] = (s == 200)
+    d["dashboard_has_content"] = ("<!doctype html" in body.lower() or "<html" in body.lower())
+    d["token_injected_valid_nonce"] = (owner_bearer in body)
+    if s != 200 or not d["dashboard_has_content"]:
+        _fail(f"/dashboard?k=valid: status={s} content={d['dashboard_has_content']}")
+    if not d["token_injected_valid_nonce"]:
+        _fail("/dashboard?k=valid owner token ENJEKTE EDILMEDI (owner UI calismaz)")
+    # /dashboard/app.js -> 200 + gercek JS
+    s, js = _http_get("/dashboard/app.js")
+    d["appjs_200"] = (s == 200)
+    d["appjs_is_js"] = ("KASA" in js or "function" in js or "app.js" in js)
+    if s != 200 or not d["appjs_is_js"]:
+        _fail(f"/dashboard/app.js: status={s} is_js={d['appjs_is_js']}")
+    # /terms?k=<nonce> -> 200
+    s, _t = _http_get("/terms", k=nonce)
+    d["terms_200"] = (s == 200)
+    if s != 200:
+        _fail(f"/terms?k=valid: {s}")
+    # GUVENLIK: nonce YOK -> owner token SIZMAZ
+    s, body_nn = _http_get("/dashboard")
+    d["no_nonce_no_leak"] = (owner_bearer not in body_nn)
+    if not d["no_nonce_no_leak"]:
+        _fail("NONCE-SUZ /dashboard owner token SIZDIRDI")
+    # GUVENLIK: YANLIS nonce -> sizmaz
+    s, body_wr = _http_get("/dashboard", k="wrong-nonce-000000")
+    d["wrong_nonce_no_leak"] = (owner_bearer not in body_wr)
+    if not d["wrong_nonce_no_leak"]:
+        _fail("YANLIS nonce /dashboard owner token SIZDIRDI")
+    # owner bearer -> /v1/dashboard/stats 200
+    s, _b = _http_get("/v1/dashboard/stats", headers={"Authorization": f"Bearer {owner_bearer}"})
+    d["owner_stats_200"] = (s == 200)
+    if s != 200:
+        _fail(f"owner /v1/dashboard/stats beklenen 200, gelen {s}")
+    # agent-bound token -> owner endpoint 403
+    s, _a = _http_get("/v1/dashboard/stats", headers={"Authorization": f"Bearer {agent_token}"})
+    d["agent_owner_403"] = (s == 403)
+    if s != 403:
+        _fail(f"agent token /v1/dashboard/stats beklenen 403, gelen {s}")
+    return d
 
 
 def admin(*args):
@@ -169,6 +259,10 @@ def main():
             _fail(f"admin.config quarantine olmadi: {first['unauth_admin']}")
         if first["postattack"].get("status") != "success":
             _fail(f"postattack write: {first['postattack']}")
+        # DASHBOARD (P1a): packaged owner dashboard + guvenlik (nonce/token sizinti)
+        nonce = read_launch_nonce()
+        owner_bearer = get_owner_bearer()
+        result["dashboard"] = dashboard_checks(nonce, owner_bearer, token)
     finally:
         srv.terminate()
         try:

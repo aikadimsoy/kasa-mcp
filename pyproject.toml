@@ -151,11 +151,19 @@ kasa-admin = "src.owner_cli:main"
 
 # PAKET KESFI: src bir gercek pakettir ve `src.*` olarak import edilir (STRIP EDILMEZ).
 # where=["."] + include=["src*"] -> wheel'e `src` ve tum `src.*` alt-paketleri girer.
-# tools/ paketlenmez (src icinde 'tools.' importu YOK -- olculdu); dashboard_ui/ ve
-# assets/ Python-disi veri, ayri PACKAGING-UX konusu (bu commit MCP cekirdegini hedefler).
+# tools/ paketlenmez (src icinde 'tools.' importu YOK -- olculdu). assets/ (icon/fonts)
+# Python-disi veri, ayri PACKAGING-UX/B1 konusu.
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+# DASHBOARD UI PAKET VERISI (2026-08-21, P1a): owner dashboard'in HTML/JS'i artik
+# src/dashboard/ui/ altinda TEK kaynak ve wheel'e PAKET VERISI olarak girer. Boylece
+# `pip install .` sonrasi /dashboard, /dashboard/app.js, /terms kurulu paketten servis
+# edilir (eski dashboard_ui/ repo-koku hesabi wheel'de kiriliyordu). routes.py bunlari
+# importlib.resources('src.dashboard'/ui) ile okur.
+[tool.setuptools.package-data]
+"src.dashboard" = ["ui/*.html", "ui/*.js"]
 
 # [project.urls]
 # TR-NOT: public depo adresi henuz kesin degil; UYDURULMADI. Sahip depoyu actiktan

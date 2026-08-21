@@ -78,7 +78,12 @@ $Args = @(
     "--include-package=src.agent",
     "--include-package=src.desktop",
     "--include-module=src.config",
-    "--include-data-dir=$Root/dashboard_ui=dashboard_ui",
+    # P1a (2026-08-21): dashboard UI kaynagi src/dashboard/ui/ altina tasindi (TEK kaynak,
+    # wheel paket-verisi). Nuitka bundle'i ESKI beklenen dashboard_ui/ konumuna kopyalar ki
+    # routes.py'nin Nuitka fallback'i (__compiled__.containing_dir/dashboard_ui) bulsun.
+    # Boylece kaynak KOPYASI yok; yalniz runtime uyumluluk. (Kaynak/wheel yolunda
+    # importlib.resources kullanilir; Nuitka'da bu fallback.)
+    "--include-data-dir=$Root/src/dashboard/ui=dashboard_ui",
     "--include-data-dir=$Root/design_system=design_system",
     "--output-filename=KASA.exe",
     "--output-dir=$OutDir",
