@@ -19,7 +19,7 @@ Windows'ta Ajan Tabanlı Tarama için Egemen, Yerel-Öncelikli bir Hafıza Kasas
 > | Araç yetkisini sıradan kodla sınırlar | deterministik aracı; model asla sınır değildir |
 > | Hash-zincirli denetim defteri tutar | kurcalama ve silme tespiti ölçümle PASS |
 > | Ajan kimliğini token'a bağlar | gerçek sunucuya karşı 7/7 kontrol, pozitif **ve** negatif — `_orch/redteam/fimp_live_verify.py` |
-> | 469 test geçiyor | 2026-08-20 koşusu (+1 xfail — xfail bir geçiş değil, beklenen başarısızlıktır; bu yüzden "%100 geçti" denmez). Önceki sayılar da gerçek koşulardı: 2026-08-05'te 323, tarayıcının üç mock testi on dört gerçek-sunucu testiyle değiştirilmeden önce 357, 2026-08-19'da 384, 19 kırık test silinmek yerine düzeltilince 428. **Test sayısı bir güvenlik iddiası değildir** — aynı koşu, bu projenin daha önce "doğrulandı" dediği kodda kusur kanıtlayan testler de ekledi |
+> | 496 test geçiyor | 2026-08-21 koşusu (+1 xfail — xfail bir geçiş değil, beklenen başarısızlıktır; bu yüzden "%100 geçti" denmez). Önceki sayılar da gerçek koşulardı: 2026-08-05'te 323, tarayıcının üç mock testi on dört gerçek-sunucu testiyle değiştirilmeden önce 357, 2026-08-19'da 384, 19 kırık test silinmek yerine düzeltilince 428, 2026-08-20'de 469, sonra paketleme / owner-CLI / dashboard-paketleme / build-root / asset-inventory testleri eklenince 2026-08-21'de 496. **Test sayısı bir güvenlik iddiası değildir** — aynı koşular, bu projenin daha önce "doğrulandı" dediği kodda kusur kanıtlayan testler de ekledi |
 >
 > **İddia EDİLMEYENLER** — bunlar açık, yazılı, ve bir kısmı ölçülmüş başarısızlıktır:
 > tam at-rest şifreleme, egress kontrolü, bağımsız güvenlik denetimi. Ağdan gelen bir çağıran
@@ -192,38 +192,35 @@ madde bugün ölçümle açık olan bir boşluğu kapatır; kanıtlar [`SECURITY
    py -3.12 -m venv .venv
    .\.venv\Scripts\Activate.ps1
    ```
-2. **Bağımlılıklar**: Gerekli Python paketlerini şu komutla yükleyin:
-   ```bash
-   pip install -r requirements.txt
-   ```
+2. **KASA'yı kurun.** İki desteklenen yol var.
 
-   > **Yalnız sunucu / MCP adaptörü (GUI'siz).** `requirements.txt` tam Windows masaüstü
-   > kurulumudur ve tepsi uygulaması için PyQt5'i (~100 MB) de çeker. Başsız / yalnız-sunucu bir
-   > kurulum (konteyner, CI, masaüstü yok) PyQt5'e **ihtiyaç duymaz.**
-   >
-   > **KASA kaynaktan çalışır — `pip install kasa` YOKTUR.** `pyproject.toml` bilerek bir
-   > `[build-system]` içermez: kod, kökten-çalışan düz bir düzen kullanır (`run.py`, ve repo
-   > kökü `sys.path`'te iken import edilen `src.*`). Temiz bir Python-3.12 venv'inde ölçüldü
-   > (2026-08-20): `pip install .` bir wheel **derler** (çıkış 0) ama paketi öyle yerleştirir ki
-   > `import src.mcp_server.server` sonra `No module named 'src'` ile başarısız olur;
-   > `pip install -e .` de aynı biçimde başarısız. Projeyi pip-kurulabilir yapmak, **henüz
-   > verilmemiş** bir src-layout kararıdır. Bu yüzden başsız için çekirdek bağımlılıkları
-   > (`requirements.txt`'teki PyQt5 **hariç** her şey — `[project.dependencies]` altında beyan
-   > edilen küme) kur ve repo kökünden çalıştır:
-   >
-   > ```bash
-   > pip install fastapi uvicorn pydantic cryptography "mcp>=1.2,<2"
-   > python -m src.mcp_server.server        # ya da:  python -m src.mcp_adapter
-   > ```
-   >
-   > Ölçüldü (2026-08-20): `PyQt5` ve `webview` import'ları bloklandığında
-   > `src.mcp_server.server` ve `src.mcp_adapter.__main__` **repo kökünden** sorunsuz import
-   > ediliyor; PyQt5'e yalnız `src/tray/app.py` ve `run.py` ihtiyaç duyuyor. Çekirdek/masaüstü
-   > bağımlılık bölünmesi `pyproject.toml`'da (`[project.optional-dependencies].desktop`) beyan
-   > edilir ve [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py) tutar; aynı
-   > test `mcp>=1.2,<2` sınırını **her iki** listede de sabitler — `mcp` 2.0 adaptörün import
-   > ettiği `mcp.server.fastmcp` modülünü kaldırdı. Yukarıdaki DPAPI ve Python 3.12 notları
-   > masaüstü yolu için geçerliliğini korur.
+   **A — Paket (başsız / sunucu / MCP kullanımı için önerilir).** Klonlanmış repo kökünden:
+   ```bash
+   pip install .
+   ```
+   Bu, çekirdek çalışma-zamanı bağımlılıklarını ve **herhangi bir dizinden çalışan üç konsol
+   komutunu** kurar — repo-kökü `cwd`'si ve `PYTHONPATH` **gerekmez**: `kasa-server`, `kasa-mcp`,
+   `kasa-admin`. **PyPI'da `pip install kasa` YOKTUR** — KASA hiçbir indekse yayımlanmadı;
+   klonladığın kaynaktan kurarsın (`pip install .`). Masaüstü GUI opsiyonel bir ektir:
+   `pip install ".[desktop]"` tepsi uygulaması için PyQt5 (~100 MB) ekler.
+
+   > Bu paket yolu her push'ta **`package-install-e2e`** CI kapısıyla uçtan uca sınanır: wheel
+   > derler, AYRI temiz bir venv'e kurar ve `kasa-server` + gerçek bir stdio MCP istemcisini
+   > `kasa-mcp` üzerinden checkout **DIŞINDA** bir dizinden koşar (`import src` site-packages'tan
+   > mı çözülüyor, kaynak ağaçtan değil — doğrulanır). Çekirdek/masaüstü bağımlılık bölünmesi
+   > `pyproject.toml` (`[project.optional-dependencies].desktop`) ve
+   > [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py) ile tutulur; `mcp>=1.2,<2`
+   > her iki listede sabittir — `mcp` 2.0 adaptörün import ettiği `mcp.server.fastmcp`'yi kaldırdı.
+
+   **B — Kaynaktan (masaüstü uygulaması / geliştirme).** Tam Windows masaüstü bağımlılık kümesini
+   kur ve tepsi uygulamasını repo kökünden başlat:
+   ```powershell
+   pip install -r requirements.txt
+   python run.py              # tepsi + sunucu;  başsız için  python run.py --no-tray
+   ```
+   `requirements.txt` tam masaüstü kurulumudur (PyQt5 dahil). Kaynaktan çalışmak repo kökünü
+   `sys.path`'te tutar; A yolundaki paket komutları bu şartı kaldırır. Yukarıdaki DPAPI ve
+   Python 3.12 notları masaüstü yolu için geçerliliğini korur.
 3. **Yerel Ollama Çalışma Zamanı** (isteğe bağlı, yalnız damıtma için gerekir): Ollama'yı https://ollama.com adresinden ayrıca kurun, ardından modeli çekin ve http://localhost:11434 adresinde servis verdiğinden emin olun:
    ```bash
    ollama pull qwen2.5:7b
@@ -265,28 +262,32 @@ yapmadan hiçbir şey işlemez.
 
 1. **KASA'yı başlatın** (port `kasa.toml` içindeki `[server] port`'tan gelir):
    ```bash
-   python -m src.mcp_server.server
+   kasa-server                    # paket; kaynaktan: python -m src.mcp_server.server
    ```
-2. **Ajanınız için token üretip kapsam verin** — sahip bunu bir kez yapar:
+2. **Ajanınız için token üretip kapsam verin** — sahip bunu bir kez, paketlenmiş sahip CLI'si
+   **`kasa-admin`** ile yapar (eski `python tools/grant_agent_scope.py …` aynı koda ince bir
+   geriye-uyumluluk sarmalayıcısı olarak hâlâ çalışır):
    ```bash
-   python tools/grant_agent_scope.py issue-token my_agent      # token'i BIR KEZ yazar
-   python tools/grant_agent_scope.py grant my_agent profile:write
-   python tools/grant_agent_scope.py grant my_agent "profile:read:*"
-   python tools/grant_agent_scope.py list my_agent             # dogrula
+   kasa-admin issue-token my_agent            # token'i BIR KEZ yazar
+   kasa-admin grant my_agent profile:write
+   kasa-admin grant my_agent "profile:read:*"
+   kasa-admin list my_agent                   # dogrula
    ```
+   `kasa-admin` **`kasa-server` ile AYNI vault**'u çözer (`KASA_VAULT_PATH`, yoksa config
+   `[vault] path`) — repo-kökü vault'u varsaymaz, o yüzden kurulu paketten de çalışır.
    > **Bunu okumazsanız okumalar başarısız olur.** `profile_read` `profile:read:<kapsam>` ister;
    > düz bir `profile:read` yetkisi **hiçbir şeyle** eşleşmez — ölçüldü: `profile:read` verilmiş
    > olmasına rağmen `Ajan 'my_agent' için 'user.preferences' okuma izni yok`. `profile:read:*`
    > kullanın ya da `profile:read:user.preferences.*` gibi daha dar bir önek. (Düz `profile:read`
    > işe yaramaz değil: `list_quarantined` tam olarak onu kontrol eder. Aynı dize, iki anlam.)
-3. **İstemcinizi adaptöre yöneltin**, token'ı ve eşleşen ajan kimliğini geçirerek:
+3. **İstemcinizi adaptöre yöneltin**, token'ı ve eşleşen ajan kimliğini geçirerek. Paket komutuyla
+   **`cwd` şartı YOK**:
    ```jsonc
    {
      "mcpServers": {
        "kasa": {
-         "command": "python",
-         "args": ["-m", "src.mcp_adapter"],
-         "cwd": "/kasa/dizininin/yolu",
+         "command": "kasa-mcp",
+         "args": [],
          "env": {
            "KASA_MCP_TOKEN": "<2. adimda uretilen token>",
            "KASA_MCP_AGENT_ID": "my_agent"
@@ -295,10 +296,11 @@ yapmadan hiçbir şey işlemez.
      }
    }
    ```
-   Claude Code'da aynı şey tek satır: `claude mcp add kasa -- python -m src.mcp_adapter` (sonra iki
+   (Paket komutu yerine kaynaktan: `"command": "python"`, `"args": ["-m", "src.mcp_adapter"]`,
+   `"cwd": "/kasa/dizininin/yolu"`.) Claude Code'da: `claude mcp add kasa -- kasa-mcp` (sonra iki
    ortam değişkenini ayarlayın). `KASA_MCP_TOKEN` boş bırakılırsa adaptör **sahip** kimlik
-   bilgisine düşer ve bir uyarı basar — o süreç artık yalnız-sahip uç noktalarına yetecek bir sır
-   taşır, o yüzden ajan token'ı tercih edin.
+   bilgisine düşer ve bir uyarı basar — o süreç yalnız-sahip uç noktalarına yetecek bir sır taşır,
+   o yüzden ajan-bağlı token'ı (en az ayrıcalık) tercih edin.
 
 **Ölçülen koşunun döndürdükleri**, sırayla:
 

@@ -1,9 +1,9 @@
 # Project KASA
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Status: research preview](https://img.shields.io/badge/status-research%20preview-orange.svg)](#-v01--research-preview--security-architecture-demo)
-[![Tests](https://img.shields.io/badge/tests-469%20passed%2C%201%20xfail-brightgreen.svg)](docs/REPRODUCE.md)
+[![Tests](https://img.shields.io/badge/tests-496%20passed%2C%201%20xfail-brightgreen.svg)](docs/REPRODUCE.md)
 [![Open findings](https://img.shields.io/badge/open%20findings-4-red.svg)](SECURITY.md)
 
 A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
@@ -25,7 +25,7 @@ A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
 > | Limits tool authority in ordinary code | deterministic broker; the model is never the boundary |
 > | Keeps a hash-chained audit ledger | tamper and deletion detection both measured PASS |
 > | Binds agent identity to the token | 7/7 live controls against a real server, positive **and** negative — `_orch/redteam/fimp_live_verify.py` |
-> | 469 tests pass | 2026-08-20 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers, 384 on 2026-08-19, then 428 once 19 broken tests were fixed rather than deleted. **A test count is not a security claim** — the same run also added tests that proved defects in code this project had already called "verified" |
+> | 496 tests pass | 2026-08-21 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers, 384 on 2026-08-19, 428 once 19 broken tests were fixed rather than deleted, 469 on 2026-08-20, then 496 on 2026-08-21 as the packaging / owner-CLI / dashboard-packaging / build-root / asset-inventory tests were added. **A test count is not a security claim** — the same runs also added tests that proved defects in code this project had already called "verified" |
 >
 > **What is NOT claimed** — these are open, written down, and some are measured failures:
 > full at-rest encryption, egress control, and independent security audit. A network caller can
@@ -218,37 +218,35 @@ currently measured open — the evidence is linked from [`SECURITY.md`](SECURITY
    py -3.12 -m venv .venv
    .\.venv\Scripts\Activate.ps1
    ```
-2. **Dependencies**: Install required Python packages using the following command:
-   ```bash
-   pip install -r requirements.txt
-   ```
+2. **Install KASA.** There are two supported paths.
 
-   > **Server / MCP-adapter only (no GUI).** `requirements.txt` is the full Windows desktop
-   > install and pulls in PyQt5 (~100 MB) for the tray app. A headless / server-only setup
-   > (container, CI, no desktop) does **not** need PyQt5.
-   >
-   > **KASA runs from source — there is no `pip install kasa`.** `pyproject.toml` deliberately
-   > omits a `[build-system]`: the code uses a flat run-from-root layout (`run.py`, and `src.*`
-   > imported with the repo root on `sys.path`). Measured 2026-08-20 in a clean Python-3.12
-   > venv: `pip install .` *builds a wheel* (exit 0) but lays the package out so that
-   > `import src.mcp_server.server` then fails with `No module named 'src'`; `pip install -e .`
-   > fails the same way. Making the project pip-installable is a src-layout migration that has
-   > **not** been decided. So for headless, install the core dependencies (everything in
-   > `requirements.txt` **except** PyQt5 — the same set declared under `[project.dependencies]`)
-   > and run from the repo root:
-   >
-   > ```bash
-   > pip install fastapi uvicorn pydantic cryptography "mcp>=1.2,<2"
-   > python -m src.mcp_server.server        # or:  python -m src.mcp_adapter
-   > ```
-   >
-   > Measured 2026-08-20: with `PyQt5` and `webview` imports blocked, `src.mcp_server.server`
-   > and `src.mcp_adapter.__main__` import cleanly **from the repo root**; only `src/tray/app.py`
-   > and `run.py` need PyQt5. The core-vs-desktop dependency split is declared in `pyproject.toml`
-   > (`[project.optional-dependencies].desktop`) and held by
-   > [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py), which also pins
-   > `mcp>=1.2,<2` in **both** dependency lists — `mcp` 2.0 removed `mcp.server.fastmcp`, which
-   > the adapter imports. The DPAPI and Python-3.12 notes above still apply to the desktop path.
+   **A — Packaged (recommended for headless / server / MCP use).** From the cloned repo root:
+   ```bash
+   pip install .
+   ```
+   This installs the core runtime dependencies and **three console commands that run from any
+   directory** — no repo-root `cwd` and no `PYTHONPATH` are required: `kasa-server`, `kasa-mcp`,
+   and `kasa-admin`. There is **no `pip install kasa` on PyPI** — KASA is not published to any
+   index; you install from the source you cloned (`pip install .`). The desktop GUI is an optional
+   extra: `pip install ".[desktop]"` adds PyQt5 (~100 MB) for the tray app.
+
+   > This packaged path is exercised end-to-end on every push by the **`package-install-e2e`**
+   > CI gate: it builds a wheel, installs it into a *separate* clean venv, and runs `kasa-server`
+   > + a real stdio MCP client through `kasa-mcp` from a directory **outside** the checkout (with
+   > `import src` verified to resolve from `site-packages`, not the source tree). The core-vs-desktop
+   > dependency split is declared in `pyproject.toml` (`[project.optional-dependencies].desktop`)
+   > and held by [`tests/test_dependency_parity.py`](tests/test_dependency_parity.py), which pins
+   > `mcp>=1.2,<2` in both dependency lists — `mcp` 2.0 removed `mcp.server.fastmcp`, which the
+   > adapter imports.
+
+   **B — From source (desktop app / development).** Install the full Windows desktop dependency
+   set and launch the tray app from the repo root:
+   ```powershell
+   pip install -r requirements.txt
+   python run.py              # tray + server;  use  python run.py --no-tray  for headless
+   ```
+   `requirements.txt` is the full desktop install (includes PyQt5). Running from source keeps
+   the repo root on `sys.path`; the packaged commands in path A remove that requirement.
 3. **Local Ollama Runtime** (optional, needed only for distillation): install Ollama separately from https://ollama.com, then pull the model and make sure it serves at http://localhost:11434:
    ```bash
    ollama pull qwen2.5:7b
@@ -326,28 +324,32 @@ function until you do step 2.
 
 1. **Start KASA** (the port comes from your `kasa.toml` `[server] port`):
    ```bash
-   python -m src.mcp_server.server
+   kasa-server                    # packaged; from source: python -m src.mcp_server.server
    ```
-2. **Issue a token for your agent and grant it scopes** — the owner does this once:
+2. **Issue a token for your agent and grant it scopes** — the owner does this once, with the
+   packaged owner CLI **`kasa-admin`** (the legacy `python tools/grant_agent_scope.py …` still
+   works as a thin backward-compatibility wrapper around the same code):
    ```bash
-   python tools/grant_agent_scope.py issue-token my_agent      # prints the token ONCE
-   python tools/grant_agent_scope.py grant my_agent profile:write
-   python tools/grant_agent_scope.py grant my_agent "profile:read:*"
-   python tools/grant_agent_scope.py list my_agent             # verify
+   kasa-admin issue-token my_agent            # prints the token ONCE
+   kasa-admin grant my_agent profile:write
+   kasa-admin grant my_agent "profile:read:*"
+   kasa-admin list my_agent                   # verify
    ```
+   `kasa-admin` resolves the **same vault as `kasa-server`** (`KASA_VAULT_PATH`, else the config
+   `[vault] path`) — it does not assume a repo-root vault, so it works from an installed package.
    > **Read this or reads will fail.** `profile_read` asks for `profile:read:<scope>`, so a bare
    > `profile:read` grant matches **nothing** — measured: `Ajan 'my_agent' için 'user.preferences'
    > okuma izni yok` even with `profile:read` granted. Use `profile:read:*`, or a narrower prefix
    > such as `profile:read:user.preferences.*`. (A bare `profile:read` is not useless — it is what
    > `list_quarantined` checks. Same string, two meanings.)
-3. **Point your client at the adapter**, passing the token and the matching agent id:
+3. **Point your client at the adapter**, passing the token and the matching agent id. With the
+   packaged command there is **no `cwd` requirement**:
    ```jsonc
    {
      "mcpServers": {
        "kasa": {
-         "command": "python",
-         "args": ["-m", "src.mcp_adapter"],
-         "cwd": "/path/to/kasa",
+         "command": "kasa-mcp",
+         "args": [],
          "env": {
            "KASA_MCP_TOKEN": "<the token from step 2>",
            "KASA_MCP_AGENT_ID": "my_agent"
@@ -356,10 +358,11 @@ function until you do step 2.
      }
    }
    ```
-   For Claude Code the same thing is one line: `claude mcp add kasa -- python -m src.mcp_adapter`
-   (then set the two env vars). Leaving `KASA_MCP_TOKEN` unset makes the adapter fall back to the
-   **owner** credential and print a warning — that process then holds a secret good for
-   owner-only endpoints, so prefer the agent token.
+   (From source instead of the packaged command: `"command": "python"`, `"args": ["-m",
+   "src.mcp_adapter"]`, `"cwd": "/path/to/kasa"`.) For Claude Code:
+   `claude mcp add kasa -- kasa-mcp` (then set the two env vars). Leaving `KASA_MCP_TOKEN` unset
+   makes the adapter fall back to the **owner** credential and print a warning — that process then
+   holds a secret good for owner-only endpoints, so prefer the agent-bound token (least privilege).
 
 **What the measured run returned**, in order:
 
