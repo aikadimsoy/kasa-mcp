@@ -16,11 +16,26 @@
 # Kullanim:  pwsh -File build_kasa.ps1   [-Standalone]  (klasor modu; hata ayiklamak icin)
 
 param(
-    [switch]$Standalone   # verilirse --onefile YERINE --standalone (57-dosya klasor; debug)
+    [switch]$Standalone,  # verilirse --onefile YERINE --standalone (57-dosya klasor; debug)
+    [string]$Root         # bos ise: KASA_BUILD_ROOT env, o da yoksa $PSScriptRoot (bu checkout)
 )
 
 $ErrorActionPreference = "Stop"
-$Root = "d:/kasa"
+
+# BUILD ROOT (2026-08-21): makineye-bagimli sabit gelistirme yolu KALDIRILDI -- baska bir
+# temiz checkout'ta production build komutu YANLIS agaci derleyebiliyordu. Precedence:
+#   1. acik -Root parametresi
+#   2. KASA_BUILD_ROOT env
+#   3. $PSScriptRoot (scriptin bulundugu checkout koku)
+if (-not $Root) {
+    $Root = if ($env:KASA_BUILD_ROOT) { $env:KASA_BUILD_ROOT } else { $PSScriptRoot }
+}
+$Root = (Resolve-Path -LiteralPath $Root).Path
+# Erken fail: yanlis/eksik agaci SESSIZCE derleme (fail-fast, anlamli hata).
+if (-not (Test-Path -LiteralPath "$Root/kasa_app.py")) { throw "build root gecersiz: '$Root/kasa_app.py' yok" }
+if (-not (Test-Path -LiteralPath "$Root/src"))         { throw "build root gecersiz: '$Root/src' dizini yok" }
+Write-Host "[build] Root: $Root" -ForegroundColor Green
+
 $Version = "0.1.0"
 
 # --- Calisan KASA'yi durdur (yoksa Nuitka eski KASA.exe'yi degistiremez: WinError 5 kilit) ---
