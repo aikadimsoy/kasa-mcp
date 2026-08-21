@@ -1,6 +1,6 @@
 # Proje KASA
 
-Windows'ta Ajan Tabanlı Tarama için Egemen, Yerel-Öncelikli bir Hafıza Kasası
+Windows'ta Yapay Zekâ Ajanları için Yerel-Öncelikli, İzin-Aracılı Hafıza Kasası
 
 > ## ⚠️ v0.1 — Araştırma Önizlemesi / Güvenlik Mimarisi Gösterimi
 >
@@ -19,7 +19,7 @@ Windows'ta Ajan Tabanlı Tarama için Egemen, Yerel-Öncelikli bir Hafıza Kasas
 > | Araç yetkisini sıradan kodla sınırlar | deterministik aracı; model asla sınır değildir |
 > | Hash-zincirli denetim defteri tutar | kurcalama ve silme tespiti ölçümle PASS |
 > | Ajan kimliğini token'a bağlar | gerçek sunucuya karşı 7/7 kontrol, pozitif **ve** negatif — `_orch/redteam/fimp_live_verify.py` |
-> | 496 test geçiyor | 2026-08-21 koşusu (+1 xfail — xfail bir geçiş değil, beklenen başarısızlıktır; bu yüzden "%100 geçti" denmez). Önceki sayılar da gerçek koşulardı: 2026-08-05'te 323, tarayıcının üç mock testi on dört gerçek-sunucu testiyle değiştirilmeden önce 357, 2026-08-19'da 384, 19 kırık test silinmek yerine düzeltilince 428, 2026-08-20'de 469, sonra paketleme / owner-CLI / dashboard-paketleme / build-root / asset-inventory testleri eklenince 2026-08-21'de 496. **Test sayısı bir güvenlik iddiası değildir** — aynı koşular, bu projenin daha önce "doğrulandı" dediği kodda kusur kanıtlayan testler de ekledi |
+> | 498 test geçiyor | 2026-08-21 koşusu (+1 xfail — xfail bir geçiş değil, beklenen başarısızlıktır; bu yüzden "%100 geçti" denmez). Önceki sayılar da gerçek koşulardı: 2026-08-05'te 323, tarayıcının üç mock testi on dört gerçek-sunucu testiyle değiştirilmeden önce 357, 2026-08-19'da 384, 19 kırık test silinmek yerine düzeltilince 428, 2026-08-20'de 469, sonra paketleme / owner-CLI / dashboard-paketleme / build-root / asset-inventory testleri eklenince 2026-08-21'de 498. **Test sayısı bir güvenlik iddiası değildir** — aynı koşular, bu projenin daha önce "doğrulandı" dediği kodda kusur kanıtlayan testler de ekledi |
 >
 > **İddia EDİLMEYENLER** — bunlar açık, yazılı, ve bir kısmı ölçülmüş başarısızlıktır:
 > tam at-rest şifreleme, egress kontrolü, bağımsız güvenlik denetimi. Ağdan gelen bir çağıran
@@ -36,7 +36,11 @@ Windows'ta Ajan Tabanlı Tarama için Egemen, Yerel-Öncelikli bir Hafıza Kasas
 
 ## Sorun
 
-Bugünkü ajan tabanlı tarayıcılar, kalıcı kullanıcı hafızasını satıcı bulutlarında saklıyor; bu da ciddi gizlilik ve kontrol sorunları doğuruyor. Kullanıcılar tarama verilerine sahip olamıyor ve yapay zekâ ajanlarına izin vermenin yasal sonuçları net biçimde tanımlanmış değil. Bu proje, herhangi bir ajanın izin-aracılı bir MCP (Model Context Protocol) sunucusu üzerinden erişebileceği; yerel-öncelikli, şifreli ve kullanıcıya ait bir hafıza kasası sağlayarak bu eksiklikleri gidermeyi amaçlıyor.
+Yapay zekâ ajanlarının oturumlar boyunca kalıcı hafızaya ihtiyacı giderek artıyor; ama kalıcı hafıza bir **yetki problemi** doğurur: hangi ajan, kullanıcıya ait hangi veriyi yazabilir, okuyabilir ya da değiştirebilir? Bugün bu hafıza çoğunlukla satıcı bulutlarında durur; kullanıcı ne veriye sahip olur ne de ona bağlı izinleri denetler.
+
+KASA yerel-öncelikli bir yanıt arar: kasa dosyası, anahtarlar ve izin kararları kullanıcının Windows makinesinde kalır; ajanlar hafızaya izin-aracılı bir MCP (Model Context Protocol) arayüzü üzerinden erişir.
+
+> **Tarayıcı kapsamı.** KASA *ajan tabanlı tarama* için hafıza olarak başladı ve deneysel bir tarayıcı entegrasyonu ağaçta hâlâ var — ama **kapalı geliyor** (bilinen bir köprü-izolasyon kusuru) ve **desteklenen onboarding yolunun parçası DEĞİL**. Bugün desteklenen ürün yüzeyi yukarıdaki MCP hafıza kasasıdır.
 
 ## KASA Ne Yapar
 

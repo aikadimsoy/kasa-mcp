@@ -54,3 +54,19 @@ def test_onboarding_uses_agent_bound_token():
     """Onboarding least-privilege AGENT token'i tarif etmeli; owner fallback tercih EDILMEMELI."""
     assert "KASA_MCP_AGENT_ID" in _EN and "agent-bound token" in _EN
     assert "prefer the agent" in _EN.lower()
+
+
+def test_primary_positioning_is_ai_agents_memory_vault():
+    """P2 positioning: ana tagline AI ajanlari / hafiza kasasi -- 'Agentic Browsing' DEGIL."""
+    assert "Memory Vault for AI Agents on Windows" in _EN
+    assert "Memory Vault for Agentic Browsing" not in _EN
+    assert "Yapay Zekâ Ajanları için" in _TR and "Hafıza Kasası" in _TR
+    assert "Ajan Tabanlı Tarama için Egemen" not in _TR
+
+
+def test_browser_not_supported_onboarding_and_preview_preserved():
+    """Browser desteklenen onboarding'in parcasi DEGIL (acik); research-preview uyarisi korunur."""
+    assert "not part of the supported onboarding path" in _EN
+    assert "desteklenen onboarding yolunun parçası DEĞİL" in _TR
+    assert "Research Preview" in _EN
+    assert "Araştırma Önizlemesi" in _TR

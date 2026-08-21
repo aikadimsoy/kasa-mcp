@@ -3,10 +3,10 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Status: research preview](https://img.shields.io/badge/status-research%20preview-orange.svg)](#-v01--research-preview--security-architecture-demo)
-[![Tests](https://img.shields.io/badge/tests-496%20passed%2C%201%20xfail-brightgreen.svg)](docs/REPRODUCE.md)
+[![Tests](https://img.shields.io/badge/tests-498%20passed%2C%201%20xfail-brightgreen.svg)](docs/REPRODUCE.md)
 [![Open findings](https://img.shields.io/badge/open%20findings-4-red.svg)](SECURITY.md)
 
-A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
+A Local-First, Permission-Brokered Memory Vault for AI Agents on Windows
 
 > ## ⚠️ v0.1 — Research Preview / Security Architecture Demo
 >
@@ -25,7 +25,7 @@ A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
 > | Limits tool authority in ordinary code | deterministic broker; the model is never the boundary |
 > | Keeps a hash-chained audit ledger | tamper and deletion detection both measured PASS |
 > | Binds agent identity to the token | 7/7 live controls against a real server, positive **and** negative — `_orch/redteam/fimp_live_verify.py` |
-> | 496 tests pass | 2026-08-21 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers, 384 on 2026-08-19, 428 once 19 broken tests were fixed rather than deleted, 469 on 2026-08-20, then 496 on 2026-08-21 as the packaging / owner-CLI / dashboard-packaging / build-root / asset-inventory tests were added. **A test count is not a security claim** — the same runs also added tests that proved defects in code this project had already called "verified" |
+> | 498 tests pass | 2026-08-21 run (+1 xfail — an xfail is an expected failure, not a pass, so this is not "100% passing"). Earlier figures were real runs of earlier trees: 323 on 2026-08-05, 357 before the scanner's three mock tests were replaced by fourteen tests that drive real fixture servers, 384 on 2026-08-19, 428 once 19 broken tests were fixed rather than deleted, 469 on 2026-08-20, then 498 on 2026-08-21 as the packaging / owner-CLI / dashboard-packaging / build-root / asset-inventory tests were added. **A test count is not a security claim** — the same runs also added tests that proved defects in code this project had already called "verified" |
 >
 > **What is NOT claimed** — these are open, written down, and some are measured failures:
 > full at-rest encryption, egress control, and independent security audit. A network caller can
@@ -43,7 +43,11 @@ A Sovereign, Local-First Memory Vault for Agentic Browsing on Windows
 
 ## The Problem
 
-Current agentic browsers store persistent user memory in vendor clouds, posing significant privacy and control issues. Users lack ownership of their browsing data, and the legal implications of granting permissions to AI agents are not clearly defined. This project aims to address these shortcomings by providing a local-first, encrypted, user-owned memory vault that can be accessed by any agent via a permission-brokered MCP (Model Context Protocol) server.
+AI agents increasingly need persistent memory across sessions, but persistent memory creates an **authority problem**: which agent may write, read, or modify which user-owned data? Today that memory usually lives in vendor clouds, so the user neither owns the data nor controls the permissions attached to it.
+
+KASA explores a local-first answer: the vault, keys and permission decisions remain on the user's Windows machine, while agents access memory through a permission-brokered MCP (Model Context Protocol) interface.
+
+> **Browser scope.** KASA began as memory for *agentic browsing*, and an experimental browser integration still exists in the tree — but it **ships disabled** (a known bridge-isolation defect) and is **not part of the supported onboarding path**. The supported product surface today is the MCP memory vault described above.
 
 ## What KASA Does
 
