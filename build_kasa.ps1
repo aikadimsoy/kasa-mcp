@@ -99,7 +99,12 @@ $Args = @(
     # Boylece kaynak KOPYASI yok; yalniz runtime uyumluluk. (Kaynak/wheel yolunda
     # importlib.resources kullanilir; Nuitka'da bu fallback.)
     "--include-data-dir=$Root/src/dashboard/ui=dashboard_ui",
-    "--include-data-dir=$Root/design_system=design_system",
+    # P1b (2026-08-21, ChatGPT operator karari): design_system DEAD BUILD PAYLOAD idi --
+    # onefile bundle'ina giriyordu ama RUNTIME'DA YUKLENMIYOR (dashboard token'lari HTML'de
+    # inline; tokens.css yalniz isim-atif, <link>/@import/fetch YOK -- olculdu, RAN-LIVE).
+    # Bu yuzden design_system'in Nuitka data-dir satiri KALDIRILDI (bundle'a girmiyor).
+    # Klasor SILINMEDI (kaynak/dev'de kalir; design_system/index.html standalone onizleme).
+    # Olcum: docs/ASSET_INVENTORY_2026-08-21.md.
     "--output-filename=KASA.exe",
     "--output-dir=$OutDir",
     "$Root/kasa_app.py"

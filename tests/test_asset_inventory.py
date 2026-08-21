@@ -56,3 +56,23 @@ def test_icon_ico_not_a_runtime_dependency():
         if "icon.ico" in t.lower():
             hits.append(str(p.relative_to(_ROOT)))
     assert not hits, f"icon.ico runtime kodda referans edilmis (build-only olmali): {hits}"
+
+
+def test_build_does_not_bundle_dead_design_system():
+    """P1b fix: design_system DEAD payload -> Nuitka --include-data-dir'den KALDIRILDI.
+
+    build_kasa.ps1 design_system'i bundle'a KOYMAMALI (regression: geri gelmesin).
+    Not: klasor SILINMEDI (kaynak/dev'de kalir); yalniz onefile bundle'ina girmemeli.
+    """
+    ps1 = (_ROOT / "build_kasa.ps1").read_text(encoding="utf-8", errors="replace")
+    assert not re.search(r"include-data-dir=[^\"\n]*design_system", ps1), \
+        "design_system yeniden Nuitka bundle'ina eklenmis (dead payload geri geldi)"
+
+
+def test_icon_ico_is_required_build_asset():
+    """P1b kalici hukum: icon.ico REQUIRED-BUILD-ASSET (fault-injection FATAL ile kanitlandi).
+
+    build recipe icon'u --windows-icon-from-ico ile KULLANMALI (yanlislikla dusmesin)."""
+    ps1 = (_ROOT / "build_kasa.ps1").read_text(encoding="utf-8", errors="replace")
+    assert "windows-icon-from-ico" in ps1 and "icon.ico" in ps1, \
+        "icon.ico build recipe'ten dusmus (REQUIRED-BUILD-ASSET)"
