@@ -57,9 +57,17 @@ def test_onboarding_uses_agent_bound_token():
 
 
 def test_primary_positioning_is_ai_agents_memory_vault():
-    """P2 positioning: ana tagline AI ajanlari / hafiza kasasi -- 'Agentic Browsing' DEGIL."""
+    """P2 positioning: ana tagline VE footer AI ajanlari/hafiza kasasi.
+
+    Not (ChatGPT karari): 'agentic browsing' GLOBAL yasak DEGIL -- browser-scope notu ve
+    disclosed browser gecmisi metinlerinde mesru. Kilit YALNIZ tagline/footer alaninda:
+    'memory vault for ... browsing' kalibi (urunu tarama olarak konumlandiran satir) olmamali.
+    """
     assert "Memory Vault for AI Agents on Windows" in _EN
-    assert "Memory Vault for Agentic Browsing" not in _EN
+    for line in _EN.splitlines():
+        low = line.lower()
+        assert not ("memory vault for" in low and "browsing" in low), \
+            f"tagline/footer hala urunu tarama olarak konumlandiriyor: {line!r}"
     assert "Yapay Zekâ Ajanları için" in _TR and "Hafıza Kasası" in _TR
     assert "Ajan Tabanlı Tarama için Egemen" not in _TR
 

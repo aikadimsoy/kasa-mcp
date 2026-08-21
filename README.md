@@ -547,5 +547,5 @@ Attribution to the author stays with the project under both options.
 
 ---
 
-**KASA** — a sovereign, local-first memory vault for agentic browsing.
+**KASA** — a local-first, permission-brokered memory vault for AI agents on Windows.
 Author: [@aikadimsoy](https://github.com/aikadimsoy) · Repository: <https://github.com/aikadimsoy/kasa-mcp>
