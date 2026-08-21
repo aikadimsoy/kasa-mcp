@@ -138,13 +138,16 @@ desktop = [
     "PyQt5>=5.15.0",
 ]
 
-# CONSOLE ENTRY-POINT'LER (2026-08-21). Paket kurulunca (pip install .) iki komut:
+# CONSOLE ENTRY-POINT'LER (2026-08-21). Paket kurulunca (pip install .) uc komut:
 #   kasa-server -> src/mcp_server/server.py:start_server (host/port config'ten)
 #   kasa-mcp    -> src/mcp_adapter/__main__.py:main (stdio MCP adaptoru)
+#   kasa-admin  -> src/owner_cli.py:main (sahip: token uret + kapsam ver/al/listele)
 # Boylece "repo kokunden -m src.X" sarti kalkar; komutlar repo DISINDAN da calisir.
+# kasa-admin vault'u server ile AYNI resolve_vault_path()'ten cozer (yanlis-kasa riski yok).
 [project.scripts]
 kasa-server = "src.mcp_server.server:start_server"
 kasa-mcp = "src.mcp_adapter.__main__:main"
+kasa-admin = "src.owner_cli:main"
 
 # PAKET KESFI: src bir gercek pakettir ve `src.*` olarak import edilir (STRIP EDILMEZ).
 # where=["."] + include=["src*"] -> wheel'e `src` ve tum `src.*` alt-paketleri girer.

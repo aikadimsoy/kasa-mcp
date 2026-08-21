@@ -145,6 +145,25 @@ def load_config(config_path: Path = None) -> dict:
     return _deep_merge(DEFAULT_CONFIG, loaded)
 
 
+def resolve_vault_path(config: dict = None) -> str:
+    """Server ve owner CLI (kasa-admin) AYNI vault'u cozsun diye ORTAK cozucu
+    (ChatGPT operator karari, 2026-08-21). Precedence:
+      1. KASA_VAULT_PATH env (test/dev override)
+      2. (verilmisse) gecirilen config, yoksa load_config() -> ["vault"]["path"]
+    Sonuc expanduser'lanir.
+
+    Turkce not: eski owner CLI (tools/grant_agent_scope.py) default vault olarak
+    REPO KOKUNU seciyordu -> KASA_VAULT_PATH verilmezse sahibin gercek kasasi
+    yerine repo kokune BASARIYLA izin yazardi. Yanlis kasaya sessizce yazmak,
+    acikca hata vermekten daha tehlikeli. Bu cozucu server ile owner CLI'yi tek
+    vault'a baglar; ikisi de bunu kullanir (invariant testte kilitli)."""
+    env = os.environ.get("KASA_VAULT_PATH")
+    if env:
+        return os.path.expanduser(env)
+    cfg = config if config is not None else load_config()
+    return os.path.expanduser(cfg["vault"]["path"])
+
+
 _DPAPI_PREFIX = "dpapi:"
 # Bu onekli bearer_token degeri DPAPI ile korunmus (base64) demektir; oneksiz = legacy duz metin.
 

@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..vault.database import Vault
 from .tools import VaultTools
-from ..config import load_config, get_or_create_bearer_token, resolve_config_path
+from ..config import load_config, get_or_create_bearer_token, resolve_config_path, resolve_vault_path
 import pathlib
 
 # -- Pydantic Modelleri (API şeması için) --
@@ -72,8 +72,9 @@ _cfg = load_config(_CONFIG_PATH)
 _BEARER_TOKEN = get_or_create_bearer_token(_cfg, _CONFIG_PATH)
 _ALLOWED_ORIGINS = _cfg["server"]["allowed_origins"]
 
-_vault_path_raw = os.environ.get("KASA_VAULT_PATH") or _cfg["vault"]["path"]
-VAULT_PATH = os.path.expanduser(_vault_path_raw)
+# ORTAK vault cozucu (config.resolve_vault_path): KASA_VAULT_PATH > config vault.
+# owner CLI (kasa-admin) da AYNI fonksiyonu kullanir -> server ve admin tek vault.
+VAULT_PATH = resolve_vault_path(_cfg)
 VAULT_INSTANCE = Vault(vault_path=VAULT_PATH)
 
 RESERVED_AGENT_IDS = {"system"}
