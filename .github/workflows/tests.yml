@@ -157,3 +157,102 @@ jobs:
       - name: pytest
         shell: pwsh
         run: pytest tests/ -q --ignore=tests/browser --ignore=tests/test_fp_b2_webgl.py --ignore=tests/test_distill_injection.py
+
+  # ===========================================================================
+  # PACKAGE-INSTALL-E2E (GATING) — "CI yesil != urun calisiyor" ilkesinin kapisi.
+  #
+  # NEDEN AYRI IS: yukaridaki pytest isi KAYNAK CHECKOUT'u requirements.txt ile
+  # kurup dogrudan checkout kodunu test eder; wheel'in GERCEKTEN calistigini
+  # kanitlamaz. Bu is (ChatGPT operator karari 2026-08-21) tam onu olcer:
+  #   checkout -> python -m build --wheel -> AYRI temiz venv'e kur -> checkout
+  #   DISINDA bos cwd + fake HOME -> gercek console entry-point'ler.
+  # Kritik dogrulama: `import src` SITE-PACKAGES'tan gelmeli; yanlislikla kaynak
+  # agactan import edilirse (GITHUB_WORKSPACE icinde) harness FAIL eder.
+  # Olcer: wheel-kod, import-kaynagi, kasa-server health, kasa-admin token+grant,
+  # kasa-mcp 6 tool, write/read, restart-persistence, system.security+admin.config
+  # quarantine (deterministik), saldiri sonrasi normal write. Harness:
+  # tools/package_install_e2e.py (yerelde de kosuldu, iki-yonlu dogrulandi).
+  # ===========================================================================
+  package-install-e2e:
+    name: package-install-e2e (windows, py3.12)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+      - name: Python 3.12 kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Wheel uret (build backend)
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+      - name: Ayri temiz venv'e wheel kur (checkout'tan BAGIMSIZ)
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/pkgvenv"
+          "$RUNNER_TEMP/pkgvenv/Scripts/python.exe" -m pip install --upgrade pip
+          "$RUNNER_TEMP/pkgvenv/Scripts/python.exe" -m pip install dist/*.whl
+      - name: 'Packaged E2E (repo-DISI cwd + fake HOME + gercek entry-point)'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2ecwd" "$RUNNER_TEMP/fakehome"
+          cp tools/package_install_e2e.py "$RUNNER_TEMP/e2ecwd/"
+          cd "$RUNNER_TEMP/e2ecwd"
+          USERPROFILE="$RUNNER_TEMP/fakehome" HOME="$RUNNER_TEMP/fakehome" \
+            "$RUNNER_TEMP/pkgvenv/Scripts/python.exe" package_install_e2e.py
+
+  # ===========================================================================
+  # LINUX PROBE (non-gating) — Windows-DISI calismayi ILK KEZ olcer.
+  #
+  # NEDEN continue-on-error: Windows isi tek GATING kapidir. Bu is BUILD'i
+  # bloklamaz; amaci README'nin "Windows only" sinirinin KANIT tarafini uretmek:
+  # cekirdek (vault fallback-crypto + server + adapter + deterministik guvenlik
+  # mantigi) Linux'ta gercekten kosuyor mu? Yesil/kirmizi bir KAPI degil, bir
+  # OLCUMDUR. Plan: once probe (gecen alt kumeyi gor), sonra gecen kumeyi ayri
+  # bir gating Linux kapisi olarak sabitle.
+  #
+  # DPAPI Linux'ta no-op degil: src/vault/encryption.py:7 platforma gore
+  # cryptography-tabanli AES-GCM/PBKDF2 fallback'e duser (IS_WINDOWS=False yolu).
+  #
+  # EK DISLEMELER (Windows isindekilere gore): asagidaki uc dosya modul
+  # duzeyinde 'src.browser.browser_window' -> 'import webview' zincirini ceker;
+  # pywebview Linux'ta GUI backend'i (GTK/WebKit) ister ve headless runner'da
+  # collection'i kirar. Bunlar zaten masaustu/tarayici testleri.
+  #   tests/test_b1_bootstrap.py:18   import src.browser.browser_window
+  #   tests/test_browser_optin_gate.py:33  from src.browser import browser_window
+  #   tests/test_l4_toctou_gate.py:19  import src.browser.browser_window
+  # PyQt5/pywebview KURULMAZ (cekirdek Linux'ta onlara ihtiyac duymaz; olculdu).
+  # ===========================================================================
+  linux-probe:
+    name: pytest (linux, py3.12) cross-platform PROBE (non-gating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Cekirdek + test bagimliliklari (GUI YOK)
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn pydantic cryptography "mcp>=1.2,<2"
+          pip install pytest httpx bandit pip-audit detect-secrets
+      - name: pytest (browser/webview import eden dosyalar HARIC)
+        run: |
+          pytest tests/ -q \
+            --ignore=tests/browser \
+            --ignore=tests/test_fp_b2_webgl.py \
+            --ignore=tests/test_distill_injection.py \
+            --ignore=tests/test_b1_bootstrap.py \
+            --ignore=tests/test_browser_optin_gate.py \
+            --ignore=tests/test_l4_toctou_gate.py

@@ -42,8 +42,29 @@ def test_build_settings_defaults(tmp_path, monkeypatch):
     monkeypatch.setenv("KASA_CONFIG", str(cfg))
     s = proxy.build_settings()
     assert s["base_url"] == "http://127.0.0.1:8000"
-    assert s["agent_id"] == "mcp_client"
     assert s["bearer"] == "tok123"
+
+    # Turkce not (2026-08-20, DEGISTIRILDI): bu satir eskiden
+    #     assert s["agent_id"] == "mcp_client"
+    # diyordu ve BEKLENTI YANLISTI -- test, urunun kirigini "dogru davranis"
+    # olarak civiliyordu.
+    #
+    # Bu senaryo sahip kimlik-bilgisi geri-dususudur (KASA_MCP_TOKEN yok,
+    # bearer kasa.toml'dan). Sunucu bu token icin bagli ajan bulamaz ve kimligi
+    # LEGACY_AGENT_ID = "legacy" olarak cozer (mcp_server/server.py:281-290).
+    # Adaptor "mcp_client" beyan edince server.py:333
+    #     if claimed is not None and claimed != resolved: -> HTTP 403
+    # devreye girer ve HER arac cagrisi 403 doner; izin kapisina bile varilmaz.
+    #
+    # Canli olculdu (izole vault + TestClient, 2026-08-20): ayni istekte
+    #     agent_id="mcp_client" -> 403 | "legacy" -> 200 | agent_id YOK -> 200
+    # ve izin HER IKI kimlige verildikten SONRA bile "mcp_client" 403 kaldi.
+    #
+    # Dogru beklenti: beyan edilecek BAGLI bir kimlik yoksa beyan da olmaz.
+    # server.py:333 `claimed is None` halini bilerek gecirir.
+    assert s["agent_id"] is None, (
+        "Sahip geri-dususunde kimlik beyan edilmemeli; beyan HTTP 403 uretir.")
+    assert s["owner_credential"] is True
 
 
 def test_build_settings_forces_loopback_host(tmp_path, monkeypatch):

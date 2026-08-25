@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..vault.database import Vault
 from .tools import VaultTools
-from ..config import load_config, get_or_create_bearer_token
+from ..config import load_config, get_or_create_bearer_token, resolve_config_path, resolve_vault_path
 import pathlib
 
 # -- Pydantic Modelleri (API şeması için) --
@@ -62,15 +62,19 @@ class SimpleToolRequest(BaseModel):
 # -- Bağımlılıklar (Dependencies) --
 
 # Config önce yüklenir — VAULT_PATH ve token burada belirlenir.
-# KASA_CONFIG env (varsa) onceliklidir -> paketlenmis app config'i %APPDATA%\KASA'ya yonlendirir
-# (frozen bundle icindeki salt-okunur kasa.toml yerine kalici, yazilabilir konum).
-_CONFIG_PATH = pathlib.Path(os.environ.get("KASA_CONFIG") or (pathlib.Path(__file__).parent.parent.parent / "kasa.toml"))
+# ORTAK cozucu (config.resolve_config_path): KASA_CONFIG > ~/.kasa/kasa.toml >
+# ./kasa.toml > (olustur) ~/.kasa/kasa.toml. Eskiden burasi __file__ uzerinden
+# repo_root/kasa.toml kuruyordu; wheel kurulunca site-packages/kasa.toml'a kayip
+# adapter'la AYRI dosya cozuyordu (olculdu 2026-08-21). Adapter (proxy.build_settings
+# -> load_config()) ayni cozucuyu kullanir; owner token tek dosyadan gelir.
+_CONFIG_PATH = resolve_config_path()
 _cfg = load_config(_CONFIG_PATH)
 _BEARER_TOKEN = get_or_create_bearer_token(_cfg, _CONFIG_PATH)
 _ALLOWED_ORIGINS = _cfg["server"]["allowed_origins"]
 
-_vault_path_raw = os.environ.get("KASA_VAULT_PATH") or _cfg["vault"]["path"]
-VAULT_PATH = os.path.expanduser(_vault_path_raw)
+# ORTAK vault cozucu (config.resolve_vault_path): KASA_VAULT_PATH > config vault.
+# owner CLI (kasa-admin) da AYNI fonksiyonu kullanir -> server ve admin tek vault.
+VAULT_PATH = resolve_vault_path(_cfg)
 VAULT_INSTANCE = Vault(vault_path=VAULT_PATH)
 
 RESERVED_AGENT_IDS = {"system"}
@@ -169,6 +173,25 @@ async def _host_guard(request: Request, call_next):
             status_code=400,
             content={"detail": "Geçersiz Host başlığı; yalnızca loopback kabul edilir."},
         )
+    return await call_next(request)
+
+
+MAX_REQUEST_BODY_BYTES = 1024 * 1024  # 1 MB DoS Kalkanı
+
+
+@app.middleware("http")
+async def _dos_payload_guard(request: Request, call_next):
+    """Bellek bozulması ve ReDoS saldırılarına karşı 1 MB üzeri gövdeleri HTTP 413 ile anında keser."""
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_REQUEST_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "İstek gövdesi çok büyük; maksimum 1 MB kabul edilir."},
+                )
+        except ValueError:
+            pass
     return await call_next(request)
 
 # Bearer token authentication için gerekli olan dependency'yi tanımlayalım
@@ -447,7 +470,23 @@ async def health_check():
     """Health check — auth gerektirmez."""
     return {"status": "ok", "version": "0.2.0"}
 
-def start_server(host: str = "127.0.0.1", port: int = 8000):
+def start_server(host: str = None, port: int = None):
+    """MCP sunucusunu baslatir. Varsayilanlar YAPILANDIRMADAN gelir.
+
+    Turkce not (2026-08-20, OLCULDU): bu imza eskiden
+    `host="127.0.0.1", port=8000` idi ve asagidaki `__main__` onu ARGUMANSIZ
+    cagiriyordu -- yani `kasa.toml` icindeki `[server] host/port` SESSIZCE yok
+    sayiliyordu. Olcum: `KASA_CONFIG` ile `port = 8791` veren bir config
+    verildi; sunucu **8000**'de acildi. Ayni config'ten vault yolu ve bearer
+    token DOGRU okunuyordu (`_CONFIG_PATH`, satir 67) -- okunmayan tek sey
+    porttu. Yani kullanicinin portu degistirmesi hicbir sey yapmiyordu ve
+    hicbir uyari da basilmiyordu.
+
+    Acik argumanlar hala oncelikli (`run.py` gibi cagiranlar icin).
+    Test: tests/test_server_start_config.py (iki yonlu).
+    """
+    host = host or _cfg["server"].get("host", "127.0.0.1")
+    port = int(port if port is not None else _cfg["server"].get("port", 8000))
     print(f"[KASA] MCP sunucusu baslatiliyor: http://{host}:{port}")
     # F-DASH: owner UI'ye erisim launch nonce'u ister. Manuel/dev kosumda launch.py yoksa
     # sahibin URL'yi buradan alabilmesi icin YAZDIR (loopback konsoluna; disari gitmez).

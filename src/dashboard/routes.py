@@ -23,29 +23,37 @@ from fastapi.responses import HTMLResponse, Response
 
 from . import stats, auditor
 
-# dashboard_ui veri dizinini calisma-zamani cozer. Uc mod var:
-#   - kaynak-run: repo koku (__file__/../../..).
-#   - Nuitka --standalone: veri exe'nin YANINDA (<dist>/dashboard_ui).
-#   - Nuitka --onefile: bootstrap kendini gecici bir dizine acar; veri ORADA durur,
-#     sys.executable ise ORIJINAL exe'yi gosterir (temp'i DEGIL) -> sys.executable KIRILIR.
-# Nuitka'nin kanonik yolu __compiled__.containing_dir'dir (her iki modda ikilinin bulundugu
-# dizin = onefile'da temp agac koku). Yine de tek bir mekanizmaya guvenmeyip aday listesinden
-# index.html'i ILK bulunan koku seceriz (mühür = ölçüm: yanlis-yolu sessizce yutmaz).
-def _resolve_ui_dir() -> pathlib.Path:
-    candidates: list[pathlib.Path] = []
+# Dashboard UI kaynaklari artik PAKET VERISI: src/dashboard/ui/{index.html,app.js,terms.html}
+# (2026-08-21, ChatGPT operator karari). TEK kaynak; kaynak-run ve wheel'de ayni yerden
+# importlib.resources ile okunur. Eski __file__/../../.. -> dashboard_ui hesabi ANA mekanizma
+# DEGIL (wheel kurulunca site-packages'ta o dizin yoktu -> dashboard packaged kurulumda
+# kiriliyordu). Nuitka icin fallback KORUNUR (build bundle'i eski dashboard_ui/ konumuna
+# kopyalar). Kaynak bulunamazsa SESSIZCE bos/404/fallback-HTML DEGIL -> ACIK hata
+# (packaging kusuru gizlenmemeli; ChatGPT P1a #6).
+def _read_ui(name: str) -> str:
+    # 1) Paket verisi (kaynak + wheel): importlib.resources
+    try:
+        from importlib.resources import files
+        res = files("src.dashboard").joinpath("ui", name)
+        if res.is_file():
+            return res.read_text(encoding="utf-8")
+    except (FileNotFoundError, ModuleNotFoundError, AttributeError, TypeError):
+        pass
+    # 2) Nuitka fallback: ikilinin yanindaki dashboard_ui/ (build scripti oraya kopyalar)
+    bases: list[pathlib.Path] = []
     comp = globals().get("__compiled__")
     if comp is not None and getattr(comp, "containing_dir", None):
-        candidates.append(pathlib.Path(comp.containing_dir))          # Nuitka (standalone+onefile)
+        bases.append(pathlib.Path(comp.containing_dir) / "dashboard_ui")
     if "__compiled__" in globals() or getattr(sys, "frozen", False):
-        candidates.append(pathlib.Path(sys.executable).resolve().parent)   # standalone yedegi
-    candidates.append(pathlib.Path(__file__).resolve().parent.parent.parent)  # kaynak-run + onefile yedegi
-    for base in candidates:
-        if (base / "dashboard_ui" / "index.html").is_file():
-            return base / "dashboard_ui"
-    return candidates[0] / "dashboard_ui"  # bulunamadi: anlamli hata icin ilk aday
-
-
-_UI_DIR = _resolve_ui_dir()
+        bases.append(pathlib.Path(sys.executable).resolve().parent / "dashboard_ui")
+    for base in bases:
+        p = base / name
+        if p.is_file():
+            return p.read_text(encoding="utf-8")
+    # 3) ACIK, teshis edilebilir hata
+    raise RuntimeError(
+        "dashboard UI kaynagi bulunamadi: %s -- importlib.resources('src.dashboard'/ui) ve "
+        "Nuitka fallback ikisi de bos. Paketleme (package-data) kirik olabilir." % name)
 
 
 def register(app, get_vault, bearer_token: str, require_owner, launch_nonce: str) -> None:
@@ -105,12 +113,12 @@ def register(app, get_vault, bearer_token: str, require_owner, launch_nonce: str
     # owner kontrolu). Artik token yalnizca launch.py'nin verdigi nonce'u tasiyan istege
     # gomulur; nonce'suz istek TOKENSIZ sayfa alir (sizinti yok, ama sayfa da calismaz).
     def dashboard_index(k: str = ""):
-        html = (_UI_DIR / "index.html").read_text(encoding="utf-8")
+        html = _read_ui("index.html")
         html = html.replace("__KASA_TOKEN__", bearer_token if _nonce_ok(k) else "")
         return HTMLResponse(html)
 
     def dashboard_appjs():
-        js = (_UI_DIR / "app.js").read_text(encoding="utf-8")
+        js = _read_ui("app.js")
         return Response(content=js, media_type="application/javascript")
 
     app.add_api_route("/dashboard", dashboard_index, methods=["GET"], include_in_schema=False)
@@ -129,7 +137,7 @@ def register(app, get_vault, bearer_token: str, require_owner, launch_nonce: str
     from .. import consent
 
     def terms_index(k: str = ""):
-        html = (_UI_DIR / "terms.html").read_text(encoding="utf-8")
+        html = _read_ui("terms.html")
         html = html.replace("__KASA_TOKEN__", bearer_token if _nonce_ok(k) else "")
         return HTMLResponse(html)
 

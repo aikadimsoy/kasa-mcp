@@ -15,6 +15,26 @@ allowed_origins = ["http://localhost", "http://127.0.0.1"]
 path = "~/.kasa/vault"   # use absolute path or ~ for home dir
 ttl_days = 30
 
+# Semantic-validation gate. Default: false.
+#
+# When true, EVERY profile write by a non-"system" agent is held in quarantine
+# with reason "pending-semantic-validation" until a judge clears it — including
+# writes that carry no injection pattern at all. Nothing reaches live memory on
+# its own.
+#
+# Turn it on only if you will also run the judge pass, which needs Ollama:
+#   VaultTools.release_pending_via_judge()   # asks the model, releases only
+#                                            # claims the source text supports
+#
+# The judge is fail-closed: if the model is unreachable, times out, or answers
+# something unrecognised, the row stays quarantined. A row is never released
+# because the check could not be made.
+#
+# It is false by default because with the gate on and no judge running, an
+# autonomous agent can write nothing at all — measured 2026-08-19: a benign
+# preference note stayed in quarantine and the live profile table was empty.
+require_semantic_validation = false
+
 [distill]
 model = "qwen2.5:7b"
 ollama_url = "http://localhost:11434"

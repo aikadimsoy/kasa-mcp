@@ -70,7 +70,15 @@ def test_denial_of_wallet_batch_bounded(tmp_path):
     (LIMIT max_events=100) ve crash yok. prompt[:2000] truncation ek sinir (engine.py:114)."""
     vault = Vault(vault_path=str(tmp_path)); vault.connect()
     tools = VaultTools(vault, agent_id="system")
-    huge = "SPAM " * 250000  # ~1.25MB tek olay
+    # Turkce not (2026-08-20): Bu satir eskiden "SPAM " * 250000 (~1.25MB) idi.
+    # tools.py:555'e sonradan 51200 baytlik (50KB) bir olay-boyutu kalkani eklendi;
+    # dev olay artik event_ingest asamasinda ValueError ile reddediliyor ve test
+    # olcmek istedigi seye -- YIGIN SINIRINA (processed<=100) -- hic ulasamiyordu.
+    # Testin niyeti korunuyor: mumkun olan EN BUYUK olay kullaniliyor (sinirin hemen
+    # altinda), boylece hem "buyuk olay + cok olay" senaryosu hem de yigin siniri
+    # olculmeye devam ediyor. Sinirin KENDISI ayri bir testle kapsandi:
+    # test_oversize_event_rejected_by_size_guard.
+    huge = "SPAM " * 10000  # ~50KB'in hemen altinda tek olay
     tools.event_ingest("browser", "page_visit",
         {"url": "http://127.0.0.1/x", "title": "flood", "text": huge})
     for i in range(250):
@@ -106,3 +114,30 @@ def test_hallucinative_provenance_sqlite_dos(tmp_path, monkeypatch):
     n = conn.execute("SELECT COUNT(*) FROM profile WHERE key='user.habits.spam'").fetchone()[0]
     conn.close()
     assert n == 0, "uydurma dev-provenance fact commit edildi (provenance dogrulama zayif)"
+
+
+def test_oversize_event_rejected_by_size_guard(tmp_path):
+    """
+    Olay-boyutu kalkani (tools.py:555, 51200 bayt) IKI YONLU sinanir.
+
+    Turkce not: Bir onceki test dev olayi kucultunce kalkanin KENDISI kapsamsiz
+    kalirdi. Bir sinir, yalniz "asani reddediyor" ile degil "altindakini geciriyor"
+    ile birlikte olculur; tek yon, her seyi reddeden bir kapiyi da gecirir.
+    """
+    import pytest as _pytest
+    vault = Vault(vault_path=str(tmp_path)); vault.connect()
+    tools = VaultTools(vault, agent_id="system")
+
+    # NEGATIF: sinirin ustu reddedilmeli
+    with _pytest.raises(ValueError) as exc:
+        tools.event_ingest("browser", "page_visit",
+                           {"url": "http://127.0.0.1/x", "title": "flood",
+                            "text": "SPAM " * 250000})
+    assert "50KB" in str(exc.value) or "51200" in str(exc.value)
+
+    # POZITIF: sinirin altindaki mesru olay GECMELI (kalkan kor bir red degil)
+    res = tools.event_ingest("browser", "page_visit",
+                             {"url": "http://127.0.0.1/ok", "title": "normal",
+                              "text": "kisa ve mesru bir sayfa metni"})
+    assert res.get("status") == "success", "sinirin altindaki mesru olay reddedildi: %r" % (res,)
+    vault.close()

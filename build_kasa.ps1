@@ -16,11 +16,26 @@
 # Kullanim:  pwsh -File build_kasa.ps1   [-Standalone]  (klasor modu; hata ayiklamak icin)
 
 param(
-    [switch]$Standalone   # verilirse --onefile YERINE --standalone (57-dosya klasor; debug)
+    [switch]$Standalone,  # verilirse --onefile YERINE --standalone (57-dosya klasor; debug)
+    [string]$Root         # bos ise: KASA_BUILD_ROOT env, o da yoksa $PSScriptRoot (bu checkout)
 )
 
 $ErrorActionPreference = "Stop"
-$Root = "d:/kasa"
+
+# BUILD ROOT (2026-08-21): makineye-bagimli sabit gelistirme yolu KALDIRILDI -- baska bir
+# temiz checkout'ta production build komutu YANLIS agaci derleyebiliyordu. Precedence:
+#   1. acik -Root parametresi
+#   2. KASA_BUILD_ROOT env
+#   3. $PSScriptRoot (scriptin bulundugu checkout koku)
+if (-not $Root) {
+    $Root = if ($env:KASA_BUILD_ROOT) { $env:KASA_BUILD_ROOT } else { $PSScriptRoot }
+}
+$Root = (Resolve-Path -LiteralPath $Root).Path
+# Erken fail: yanlis/eksik agaci SESSIZCE derleme (fail-fast, anlamli hata).
+if (-not (Test-Path -LiteralPath "$Root/kasa_app.py")) { throw "build root gecersiz: '$Root/kasa_app.py' yok" }
+if (-not (Test-Path -LiteralPath "$Root/src"))         { throw "build root gecersiz: '$Root/src' dizini yok" }
+Write-Host "[build] Root: $Root" -ForegroundColor Green
+
 $Version = "0.1.0"
 
 # --- Calisan KASA'yi durdur (yoksa Nuitka eski KASA.exe'yi degistiremez: WinError 5 kilit) ---
@@ -78,8 +93,18 @@ $Args = @(
     "--include-package=src.agent",
     "--include-package=src.desktop",
     "--include-module=src.config",
-    "--include-data-dir=$Root/dashboard_ui=dashboard_ui",
-    "--include-data-dir=$Root/design_system=design_system",
+    # P1a (2026-08-21): dashboard UI kaynagi src/dashboard/ui/ altina tasindi (TEK kaynak,
+    # wheel paket-verisi). Nuitka bundle'i ESKI beklenen dashboard_ui/ konumuna kopyalar ki
+    # routes.py'nin Nuitka fallback'i (__compiled__.containing_dir/dashboard_ui) bulsun.
+    # Boylece kaynak KOPYASI yok; yalniz runtime uyumluluk. (Kaynak/wheel yolunda
+    # importlib.resources kullanilir; Nuitka'da bu fallback.)
+    "--include-data-dir=$Root/src/dashboard/ui=dashboard_ui",
+    # P1b (2026-08-21, ChatGPT operator karari): design_system DEAD BUILD PAYLOAD idi --
+    # onefile bundle'ina giriyordu ama RUNTIME'DA YUKLENMIYOR (dashboard token'lari HTML'de
+    # inline; tokens.css yalniz isim-atif, <link>/@import/fetch YOK -- olculdu, RAN-LIVE).
+    # Bu yuzden design_system'in Nuitka data-dir satiri KALDIRILDI (bundle'a girmiyor).
+    # Klasor SILINMEDI (kaynak/dev'de kalir; design_system/index.html standalone onizleme).
+    # Olcum: docs/ASSET_INVENTORY_2026-08-21.md.
     "--output-filename=KASA.exe",
     "--output-dir=$OutDir",
     "$Root/kasa_app.py"

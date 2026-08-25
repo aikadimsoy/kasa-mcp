@@ -8,6 +8,7 @@ Her araç çağrısı: izin kontrolü (permissions tablosu) → işlem → audit
 """
 
 import json
+import os
 import re
 import time
 import hashlib
@@ -32,7 +33,59 @@ class VaultTools:
     def __init__(self, vault: Vault, agent_id: str):
         self.vault = vault
         self.agent_id = agent_id
-        self.audit_chain = vault.audit_chain
+
+    @property
+    def audit_chain(self):
+        """
+        Denetim zinciri — vault'tan HER ERİŞİMDE okunur, kurulumda kopyalanmaz.
+
+        Türkçe not (2026-08-20, ölçülmüş hata): Burası eskiden
+            self.audit_chain = vault.audit_chain
+        idi, yani zinciri KURULUŞ ANINDA kopyalıyordu. `Vault.__init__`
+        `audit_chain`'i `None` bırakır (database.py:50); zincir ancak
+        `connect()` içinde kurulur (database.py:235) ve `get_connection()`
+        onu tembel olarak çağırır.
+
+        Sonuç: `VaultTools(vault, ...)` bağlanmamış bir vault ile kurulursa
+        `None` kopyalanıyor ve bir daha okunmuyordu. Yazma işlemi `_db()`
+        üzerinden bağlantıyı açıyor, satırı yazıyor, sonra denetim kaydında
+            'NoneType' object has no attribute 'record'
+        ile çöküyordu. `src/distill/engine.py:255` tam olarak bu şekilde
+        kuruyor (`Vault(vault_path)` — connect yok), dolayısıyla damıtma
+        motorunun profile yazma yolu bu hatayla ölüyordu ve hata
+        `errors` listesine yutulduğu için çağıran yalnız "0 yazıldı,
+        0 karantina" görüyordu.
+
+        Özellik hâline getirilmesi tek bir çağrı yerini değil SINIFI kapatır:
+        `VaultTools` altı yerde kuruluyor ve yalnız biri önceden `connect()`
+        çağırıyordu (O4 — bir hata sınıfını düzeltince diğer yerlerini tara).
+        """
+        return self.vault.audit_chain
+
+    def _semantic_validation_required(self) -> bool:
+        """
+        `pending-semantic-validation` kapısı açık mı? Varsayılan KAPALI.
+
+        Öncelik: KASA_REQUIRE_SEMANTIC_VALIDATION ortam değişkeni > kasa.toml
+        [vault] require_semantic_validation > varsayılan (False).
+
+        Türkçe not — varsayılanın neden KAPALI olduğu: kapı açıkken sıradan bir
+        ajanın her yazımı, zararsız olanlar dahil, karantinaya düşer ve canlı
+        hafızaya HİÇBİR ŞEY girmez. Serbest bırakan otomatik bir yol olmadan bu,
+        ürünü otonom kullanım için işlevsiz kılar. Kapıyı açmak isteyen sahip
+        bunu bilerek açar ve release_pending_via_judge()'u koşturur.
+        Ölçüm: bkz. tests/test_semantic_validation_gate.py (iki yönlü).
+        """
+        env = os.environ.get("KASA_REQUIRE_SEMANTIC_VALIDATION")
+        if env is not None:
+            return env.strip().lower() in ("1", "true", "yes", "on", "evet")
+        try:
+            from ..config import load_config
+            return bool((load_config().get("vault") or {}).get("require_semantic_validation", False))
+        except Exception:
+            # Yapılandırma okunamıyorsa kapı KAPALI sayılır: bilinmeyen bir durumda
+            # ürünü tamamen durduran bir varsayılan seçmeyiz.
+            return False
 
     def _db(self) -> sqlite3.Connection:
         """Vault'un aktif DB bağlantısını döndürür."""
@@ -45,16 +98,45 @@ class VaultTools:
     def _check_permission(self, scope: str) -> bool:
         """
         permissions tablosundan ajan izni kontrol eder (deny-by-default).
+        Hiyerarşik eşleşmeyi destekler (ör. 'profile:read:user.*' yetkisi 'profile:read:user.name' isteğini kabul eder).
         MVP-0: 'system' ajanına her şey açık; diğerleri DB'den kontrol edilir.
         """
         if self.agent_id == "system":
             return True
         cursor = self._db().cursor()
         cursor.execute(
-            "SELECT 1 FROM permissions WHERE agent_id=? AND scope=? AND revoked_at IS NULL",
-            (self.agent_id, scope)
+            "SELECT scope FROM permissions WHERE agent_id=? AND revoked_at IS NULL",
+            (self.agent_id,)
         )
-        return cursor.fetchone() is not None
+        for row in cursor.fetchall():
+            granted_scope = row[0]
+            if granted_scope == scope:
+                return True
+            if granted_scope.endswith("*"):
+                prefix = granted_scope[:-1]
+                if scope.startswith(prefix):
+                    return True
+        return False
+
+    def _check_rate_limit(self, action: str, limit: int, window_sec: int) -> None:
+        """
+        Circuit Breaker (Sigorta): Ajanın belirli bir süre içindeki işlem sayısını denetler.
+        Sistem (system) ajanı bu kuraldan muaftır. (Ajan ele geçirilmesine karşı)
+        """
+        if self.agent_id == "system":
+            return
+            
+        cursor = self._db().cursor()
+        now = time.time()
+        start_time = now - window_sec
+        cursor.execute(
+            "SELECT COUNT(*) FROM audit WHERE agent_id = ? AND action = ? AND timestamp >= ?",
+            (self.agent_id, action, start_time)
+        )
+        count = cursor.fetchone()[0]
+        if count >= limit:
+            self.audit_chain.record(self.agent_id, f"rate_limit_{action}", {"result": "circuit_breaker_tripped", "limit": limit})
+            raise PermissionError(f"Circuit Breaker (Sigorta) Tetiklendi: Ajan '{self.agent_id}' son {window_sec} saniyede {limit} işlem limitini aştı.")
 
     def grant_permission(self, scope: str) -> None:
         """Ajan için belirli bir kapsam izni verir (sistem aracı, MVP-0 helper).
@@ -137,6 +219,16 @@ class VaultTools:
             İşlem sonucunu belirten bir sözlük. Karantinaya alindiysa status="quarantined".
         """
         action = "profile_write"
+        
+        # HIZ SINIRI (Circuit Breaker): 60 saniyede maksimum 50 profil yazma işlemi
+        self._check_rate_limit(action, limit=50, window_sec=60)
+        
+        # BOYUT SINIRI (Schema & Length Enforcer): Maksimum 10KB (10240 byte)
+        payload_size = len(json.dumps(value, ensure_ascii=False).encode('utf-8'))
+        if payload_size > 10240:
+            self.audit_chain.record(self.agent_id, action, {"key": key, "result": "structural_violation", "reason": "payload_too_large", "size": payload_size})
+            raise ValueError(f"Yapısal İhlal: Yazılmak istenen veri ({payload_size} byte) KASA maksimum limitini (10240 byte) aşıyor. DoS (Denial of Service) kalkanı tetiklendi.")
+            
         # L2: audit'e ham `value` YAZILMAZ (tools.py:109 yan-kanal) -> digest. provenance ID'ler, plaintext.
         details = {"key": key, "value": _digest(value), "provenance": provenance}
 
@@ -157,9 +249,55 @@ class VaultTools:
         # L2: value at-rest AES-GCM sifrelenir (AAD = profile|value|key). provenance = event-ID'ler, plaintext.
         enc_value = cell_crypt.encrypt_cell(json.dumps(value), self._key(), cell_crypt.aad_profile(key))
 
-        # Faz-2 (G3/ASI06): karantina degerlendirmesi. Supheli yazim CANLIYA girmez -> ayri
-        # profile_quarantine tablosunda tutulur (tespit + karantina + atif). Sahip serbest birakir.
-        reason = ("forced" if quarantine else None) if quarantine is not None else _quarantine_reason(value)
+        # YAPISAL SAVUNMA (Namespace Isolation)
+        # Eger ajan (system disinda) kritik bir isim uzayina yazmaya calisiyorsa, icerige bakilmaksizin karantinaya alinir.
+        is_protected_namespace = False
+        if self.agent_id != "system":
+            # Kritik on-ekler veya son-ekler
+            if key.startswith(("system.", "admin.", "config.", "security.")):
+                is_protected_namespace = True
+            elif key.endswith((".role", ".permissions", ".auth", ".token")):
+                is_protected_namespace = True
+
+        if is_protected_namespace:
+            reason = f"structural-violation: unauthorized write attempt to protected namespace '{key}'"
+        else:
+            # F-POISON FIX: Ajan ve Distiller yazımları (system hariç) bağımsız bir 'Hakem (Judge)'
+            # tarafından epistemik olarak (iddia vs kaynak metin) doğrulanana kadar karantinada bekler.
+            #
+            # Türkçe not (2026-08-20): Bu dal artık BAYRAĞA BAĞLI ve varsayılan KAPALI.
+            # Sebep ölçüldü: bayrak koşulsuz açıkken sıradan bir ajanın TAMAMEN ZARARSIZ
+            # yazımı bile ("user.preferences.coffee" = "y") canlıya girmiyordu; profile
+            # tablosu boş kalıyordu. Bu bir güvenlik kazanımı değil, ayrım gözetmeyen bir
+            # kapıdır — ve tehlikelisi şu: her şeyi tuttuğu için ürün güvenli GÖRÜNÜR,
+            # oysa tutan şey dedektör değil kapının kendisidir.
+            #
+            # Serbest bırakacak Hakem VAR ama karantinaya BAĞLI DEĞİLDİ: src/vault/decay.py
+            # gerçek bir LLM hakemi (check_contradiction) içeriyor, ancak `profile` tablosuna
+            # bakıyor (canlıya girmiş veri) ve `weight` düşürüyor — profile_quarantine'a hiç
+            # dokunmuyor, üstelik hiçbir yerden çağrılmıyor. Yani bekleme odasının çıkış
+            # kapısı yoktu; tek çıkış sahibin elle bastığı release_quarantined().
+            #
+            # Bayrak açıkken davranış aynen korunur (tasarım niyeti silinmedi) ve
+            # release_pending_via_judge() ile Hakem yolu kullanılabilir. Varsayılanın ne
+            # olacağı sahibin kararıdır (kasa.toml [vault] require_semantic_validation).
+            #
+            # SIRA DUZELTMESI (2026-08-20, olculdu): once DEDEKTOR, sonra kapi.
+            # Onceki sira "kapi acik mi" diye once soruyordu; acikken
+            # _quarantine_reason() HIC CAGRILMIYORDU. Sonuc: klasik bir
+            # enjeksiyon yuku, dedektorun gordugu 'agent-directed imperative
+            # pattern' yerine Hakem'in OTOMATIK serbest birakabilecegi
+            # 'pending-semantic-validation' etiketiyle kaydediliyordu. Yani
+            # kapiyi ACMAK savunmayi zayiflatiyordu. Test:
+            # tests/test_judge_adversarial.py::test_gate_open_does_not_shortcircuit_the_detector
+            if quarantine is not None:
+                # Faz-2 (G3/ASI06): cagiran taraf acikca zorluyor (sahip yolu).
+                reason = "forced" if quarantine else None
+            else:
+                reason = _quarantine_reason(value)
+                if reason is None and self.agent_id != "system" and self._semantic_validation_required():
+                    reason = "pending-semantic-validation"
+            
         if reason:
             cursor.execute(
                 "INSERT INTO profile_quarantine (key, value, provenance, agent_id, reason, created_at) VALUES (?,?,?,?,?,?)",
@@ -199,6 +337,127 @@ class VaultTools:
                           "agent_id": r[4], "reason": r[5], "created_at": r[6]})
         self.audit_chain.record(self.agent_id, "quarantine_list", {"count": len(items)})
         return {"status": "success", "count": len(items), "data": items}
+
+    def release_pending_via_judge(self, limit: int = 50) -> dict:
+        """
+        `pending-semantic-validation` satırlarını Hakem'e sorar; yalnız DESTEKLENEN
+        olanları serbest bırakır. Bekleme odasının çıkış kapısı budur.
+
+        Türkçe not (2026-08-20 — bu metot neden var):
+        `profile_write`, sıradan ajan yazımlarını "bağımsız bir Hakem doğrulayana
+        kadar" karantinada tutuyordu. Ölçüldü ki o Hakem karantinaya BAĞLI
+        DEĞİLDİ: `src/vault/decay.py` gerçek bir LLM hakemi içeriyor ama `profile`
+        tablosuna bakıyor (zaten canlıya girmiş veri), `weight` düşürüyor ve
+        hiçbir yerden çağrılmıyor. Yani tek çıkış sahibin elle bastığı
+        `release_quarantined()` idi ve otonom kullanımda hiçbir şey canlıya
+        girmiyordu.
+
+        FAIL-CLOSED — üç kural:
+        1. Hakem `None` derse (erişilemedi / zaman aşımı / tanınmayan yanıt)
+           satır **karantinada kalır**. Ölçülemeyen şey geçiş sayılmaz.
+        2. `structural-violation` satırları Hakem'e **hiç sorulmaz**; onlar
+           içerik değil YAPI ihlalidir (korunan isim uzayına yazma) ve
+           semantik bir doğrulamayla aklanamaz.
+        3. Kaynak metin bulunamazsa satır karantinada kalır — kaynağı olmayan
+           bir iddia "destekleniyor" sayılamaz.
+
+        Döner: {"released": n, "kept": n, "unresolved": n, "details": [...]}
+        `unresolved`, Hakem'in karar veremediği satır sayısıdır ve **sıfır
+        olmadıkça bu koşudan "hepsi temiz" hükmü çıkarılamaz**.
+        """
+        from ..vault.judge import judge_claim_supported, judge_input_unsafe_reason
+
+        if not self._check_permission("admin:grant"):
+            raise PermissionError(f"Ajan '{self.agent_id}' için karantina serbest bırakma izni yok.")
+
+        cur = self._db().cursor()
+        cur.execute(
+            "SELECT id, key, value, provenance, reason FROM profile_quarantine "
+            "WHERE reason = ? ORDER BY id LIMIT ?",
+            ("pending-semantic-validation", int(limit)),
+        )
+        rows = cur.fetchall()
+
+        released, kept, unresolved, details = 0, 0, 0, []
+        for row in rows:
+            qid, key = row[0], row[1]
+            try:
+                claim = json.loads(
+                    cell_crypt.decrypt_cell(row[2], self._key(), cell_crypt.aad_profile(key)))
+                provenance = json.loads(row[3]) or []
+            except Exception as exc:
+                unresolved += 1
+                details.append({"id": qid, "key": key, "verdict": "unresolved",
+                                "why": "cozulemedi: %s" % exc})
+                continue
+
+            source = self._source_text_for(provenance)
+            if not source:
+                kept += 1
+                details.append({"id": qid, "key": key, "verdict": "kept",
+                                "why": "kaynak metin bulunamadi"})
+                continue
+
+            # ON-ELEME (deterministik, modele sorulmadan).
+            # Hakem'in istemi iki taraftan da saldirganin yazabildigi metinle
+            # dolar: `claim` ajanin yazdigi deger, `source` ajanin events:write
+            # ile yazabildigi olay metni. Literatur bu sinifi olcmus
+            # (arXiv:2505.13348 — hakem rolundeki modellerde %65,9'a varan
+            # saldiri basarisi). Bu yuzden dusmanca metin hakeme HIC sorulmaz.
+            unsafe = judge_input_unsafe_reason(str(claim)) or judge_input_unsafe_reason(source)
+            if unsafe:
+                kept += 1
+                details.append({"id": qid, "key": key, "verdict": "kept",
+                                "why": "hakeme sorulmadi (%s)" % unsafe})
+                continue
+
+            supported = judge_claim_supported(str(claim), source)
+            if supported is True:
+                # DEGISMEZ KURAL: otomatik yol, deterministik katmanin
+                # reddedecegini veremez. release_quarantined() zorla yazar
+                # (quarantine=False -> _quarantine_reason hic kosmaz); o kapi
+                # sahibin bilincli onayi icin tasarlandi. Otomatik Hakem yolu
+                # ayni kapiyi kullandigi icin burada ayrica denetlenir.
+                det = _quarantine_reason(claim)
+                if det:
+                    kept += 1
+                    details.append({"id": qid, "key": key, "verdict": "kept",
+                                    "why": "hakem SUPPORTED dedi ama dedektor reddetti: %s" % det})
+                    continue
+                self.release_quarantined(qid)
+                released += 1
+                details.append({"id": qid, "key": key, "verdict": "released"})
+            elif supported is False:
+                kept += 1
+                details.append({"id": qid, "key": key, "verdict": "kept",
+                                "why": "hakem: desteklenmiyor"})
+            else:
+                unresolved += 1
+                details.append({"id": qid, "key": key, "verdict": "unresolved",
+                                "why": "hakem karar veremedi (fail-closed)"})
+
+        self.audit_chain.record(self.agent_id, "quarantine_judge_pass", {
+            "released": released, "kept": kept, "unresolved": unresolved,
+            "examined": len(rows)})
+        return {"released": released, "kept": kept, "unresolved": unresolved,
+                "examined": len(rows), "details": details}
+
+    def _source_text_for(self, provenance_event_ids: list) -> str:
+        """Köken olay kimliklerinden ham kaynak metni toplar (Hakem'e verilir)."""
+        if not provenance_event_ids:
+            return ""
+        cur = self._db().cursor()
+        marks = ",".join("?" for _ in provenance_event_ids)
+        try:
+            cur.execute("SELECT content FROM events WHERE id IN (%s)" % marks,
+                        [int(i) for i in provenance_event_ids])
+        except Exception:
+            return ""
+        parts = []
+        for (content,) in cur.fetchall():
+            if content and not str(content).startswith("tombstone:"):
+                parts.append(str(content))
+        return "\n".join(parts)
 
     def release_quarantined(self, quarantine_id: int) -> dict:
         """Faz-2: bir karantina kaydini AKTIF profile tasir (sahibin bilincli onayi).
@@ -419,6 +678,16 @@ class VaultTools:
             İşlem sonucunu belirten bir sözlük.
         """
         action = "event_ingest"
+        
+        # HIZ SINIRI (Circuit Breaker): 60 saniyede maksimum 100 olay girişi
+        self._check_rate_limit(action, limit=100, window_sec=60)
+        
+        # BOYUT SINIRI: Maksimum 50KB olay hacmi
+        payload_size = len(json.dumps(content, ensure_ascii=False).encode('utf-8'))
+        if payload_size > 51200:
+            self.audit_chain.record(self.agent_id, action, {"source": source, "result": "structural_violation", "reason": "payload_too_large"})
+            raise ValueError(f"Yapısal İhlal: Olay boyutu ({payload_size} byte) maksimum 50KB sınırını aşıyor.")
+        
         # L2: ham `content` audit'e YAZILMAZ -> digest (forget/unutulma-hakki ile tutarli).
         details = {"source": source, "type": type, "content": _digest(content), "ttl_days": ttl_days}
 

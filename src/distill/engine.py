@@ -248,27 +248,23 @@ class DistillEngine:
                 valid_facts.append((fact['key'], json.dumps(_red_value), fact['provenance_event_ids']))
 
         # Upsert each valid fact into the profile table
-        from ..vault.quarantine import quarantine_reason
+        import os
+        from ..vault.database import Vault
+        from ..mcp_server.tools import VaultTools
+        vault_path = os.path.dirname(self.db_path) or "."
+        vault = Vault(vault_path)
+        tools = VaultTools(vault, agent_id="distill")
+
         for key, value, provenance_event_ids in valid_facts:
             try:
-                ts = time.time()
-                # Faz-2 (G3/ASI06): QC-gecen ama YAPISAL olarak ajana-emir gorunumundeki distill
-                # yazimi CANLIYA girmez -> profile_quarantine (tespit+karantina+atif, agent_id=distill).
-                # Ayni deterministik bayrak agent yolunda da kullanilir (kapsam butunlugu).
-                reason = quarantine_reason(value)
-                if reason:
-                    cursor.execute(
-                        "INSERT INTO profile_quarantine (key, value, provenance, agent_id, reason, created_at) VALUES (?,?,?,?,?,?)",
-                        (key, value, json.dumps(provenance_event_ids), "distill", reason, ts))
+                # VaultTools.profile_write applies DoS checks, schema checks, credential checks, and quarantine limits.
+                result = tools.profile_write(key, value, provenance_event_ids)
+                if result.get("status") == "quarantined":
                     facts_quarantined += 1
-                    continue
-                cursor.execute("""
-                    INSERT OR REPLACE INTO profile (id, key, value, provenance, created_at, updated_at)
-                    VALUES (NULL, ?, ?, ?, ?, ?)
-                """, (key, value, json.dumps(provenance_event_ids), ts, ts))
-                facts_committed += 1
-            except sqlite3.Error as e:
-                errors.append(f"Failed to insert or update profile fact: {e}")
+                else:
+                    facts_committed += 1
+            except Exception as e:
+                errors.append(f"Failed to insert or update profile fact via VaultTools: {e}")
 
         # Mark processed events as distilled=1
         event_ids = [event[0] for event in events]

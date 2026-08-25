@@ -97,6 +97,11 @@ CREATE_AUDIT_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit (timestamp);
 """
 
+# Hiz siniri (Circuit Breaker) performansi icin kompozit indeks
+CREATE_AUDIT_RATE_LIMIT_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_audit_rate_limit ON audit (agent_id, action, timestamp);
+"""
+
 # Denetim kontrol noktalari (DEBI-2): zincirin donemsel kapanis muhurleri.
 # Sebep: audit zinciri yalnizca uca ekler, aradan silinemez -> sinirsiz buyur.
 # Checkpoint son entry_hash'i ayri tabloya sabitler; ondan eski kayitlar arsivlenebilir,
@@ -168,6 +173,7 @@ ALL_INDEXES = [
     CREATE_EVENTS_INDEX,
     CREATE_PROFILE_INDEX,
     CREATE_AUDIT_INDEX,
+    CREATE_AUDIT_RATE_LIMIT_INDEX,
     CREATE_SEARCH_HASH_INDEX,
     CREATE_AGENT_TOKENS_INDEX,
 ]

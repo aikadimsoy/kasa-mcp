@@ -1,19 +1,24 @@
-# KASA - proje meta verisi + pytest yapilandirmasi.
+# KASA - proje meta verisi + build/paketleme + pytest yapilandirmasi.
 #
-# TR-NOT (ogretici, ASCII-Turkce: TOML icinde ozel karakter YOK - Windows konsolu cp1254):
-# Bu dosya SADECE meta veri ve test ayari icerir. Bilerek bir [build-system] tablosu
-# EKLENMEDI, cunku depo su an "duz calistirma" duzeninde: kok dizindeki run.py /
-# kasa_app.py, kok dizini sys.path'e alarak 'src.*' paketlerini import eder
-# (ornek: run.py:14 'from src.vault.database import Vault'). Bir derleme arka ucu ve
-# paket kesfi tanimlamak, paket duzeni hakkinda HENUZ VERILMEMIS bir karar gerektirir
-# (src-layout'a tasima) ve mevcut import'lari sessizce kirabilir. Kural: emin degilsen
-# minimal tut. Wheel/sdist uretmek gerektiginde bu karar ayri alinmalidir.
+# TR-NOT (ASCII-Turkce: TOML icinde ozel karakter YOK - Windows konsolu cp1254):
+# PAKETLEME (2026-08-21, ChatGPT operator karari + RAN-LIVE olcum):
+# Eskiden burada [build-system] YOKTU ve bu not "pip install . desteklenmiyor;
+# setuptools GURULTULU hata verir" diyordu. Olcum bunu CURUTTU: `pip install .`
+# EXIT 0 ile SESSIZCE calisip KODSUZ (yalniz metadata) bir wheel uretiyordu --
+# kullanici icin en kotu hal ("kuruldu" ama import edilecek modul yok).
 #
-# SONUC: 'pip install .' desteklenmiyor. Beklenti (DENENMEDI, bu bir olcum degil):
-# setuptools duz-duzende birden fazla ust duzey dizin gorup hata verir. Sessiz degil
-# gurultulu bir hata beklenir; birisi 'pip install .' denerse ve baska bir sey olursa
-# bu not duzeltilmelidir. Desteklenen kurulum yolu README'dekidir:
-# pip install -r requirements.txt + python run.py
+# Cozum, paket AGACINI TASIMADAN (src.* import'lari korunur, src bir gercek
+# pakettir): asagidaki [build-system] + [tool.setuptools.packages.find] wheel'e
+# `src` ve tum `src.*` alt-paketlerini koyar; [project.scripts] iki console
+# entry-point verir (kasa-server, kasa-mcp). "src -> kasa" yeniden adlandirmasi
+# BILEREK YAPILMADI (ayri, verilmemis bir karar). Desteklenen iki yol artik:
+#   (a) kaynaktan: pip install -r requirements.txt + python run.py (repo kokunden)
+#   (b) paket:     pip install . + kasa-server / kasa-mcp (repo disindan da)
+# Dogrulama fresh-venv E2E ile yapilir; "EXIT 0" tek basina PASS DEGILDIR.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "kasa"
@@ -76,10 +81,21 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "pydantic>=2.0.0",
-    "PyQt5>=5.15.0",
     "cryptography>=42.0.0",
     # mcp: YALNIZ src/mcp_adapter stdio sureci icin (MIT lisans); exe'ye paketlenmez.
-    "mcp>=1.2",
+    #
+    # UST SINIR ZORUNLU (2026-08-20 olculdu). Burasi `mcp>=1.2` yaziyordu, yani
+    # requirements.txt'teki `<2` sinirini TASIMIYORDU -- ustundeki yorum
+    # "surum sinirlari dahil aynen kopyalandi" dedigi hâlde. Olcum:
+    #   pip index versions mcp -> en yenisi 2.0.0
+    #   mcp-2.0.0-py3-none-any.whl icinde 'fastmcp' gecen HICBIR dosya yok
+    #     (mcp/server/ altinda: auth, lowlevel, mcpserver)
+    #   src/mcp_adapter/__main__.py:60 -> from mcp.server.fastmcp import FastMCP
+    # Yani `pip install .` (pyproject yolu) mcp 2.0.0 kurar ve adaptor
+    # ModuleNotFoundError ile IMPORT bile edilemez. requirements.txt yolundan
+    # kuran kullanici saglam, pyproject yolundan kuran kirik olurdu.
+    # Kaymayi tekrar etmemek icin: tests/test_dependency_parity.py
+    "mcp>=1.2,<2",
 ]
 
 [project.optional-dependencies]
@@ -100,6 +116,54 @@ test = [
     "httpx",
     "pywebview",
 ]
+
+# Masaustu (tepsi ikonu + yerel pencere) EK bagimliligi.
+#
+# Turkce not (2026-08-20, OLCULDU): PyQt5 cekirdek bagimlilik DEGIL. Olcum,
+# PyQt5 ve webview import'lari bloklanarak yapildi:
+#     src.mcp_server.server   -> OK
+#     src.mcp_adapter.__main__-> OK
+#     src.mcp_server.tools    -> OK
+#     src.vault.database      -> OK
+# PyQt5'e dokunan yalniz iki dosya var: src/tray/app.py ve run.py -- ikisi de
+# masaustu baslatici. Yani sunucuyu/MCP adaptorunu kullanmak isteyen birine
+# (basligi: headless Linux/macOS, konteyner, CI) ~100 MB'lik bir GUI
+# kutuphanesi ZORUNLU tutuluyordu ve PyQt5 tekerlegi olmayan bir ortamda
+# `pip install .` tamamen basarisiz oluyordu.
+#
+# requirements.txt DEGISMEDI: orasi sahibin Windows masaustu kurulumudur ve
+# CI de onu kurar. Kayma olmasin diye esitlik testi guncellendi:
+# tests/test_dependency_parity.py -> requirements.txt == dependencies + desktop
+desktop = [
+    "PyQt5>=5.15.0",
+]
+
+# CONSOLE ENTRY-POINT'LER (2026-08-21). Paket kurulunca (pip install .) uc komut:
+#   kasa-server -> src/mcp_server/server.py:start_server (host/port config'ten)
+#   kasa-mcp    -> src/mcp_adapter/__main__.py:main (stdio MCP adaptoru)
+#   kasa-admin  -> src/owner_cli.py:main (sahip: token uret + kapsam ver/al/listele)
+# Boylece "repo kokunden -m src.X" sarti kalkar; komutlar repo DISINDAN da calisir.
+# kasa-admin vault'u server ile AYNI resolve_vault_path()'ten cozer (yanlis-kasa riski yok).
+[project.scripts]
+kasa-server = "src.mcp_server.server:start_server"
+kasa-mcp = "src.mcp_adapter.__main__:main"
+kasa-admin = "src.owner_cli:main"
+
+# PAKET KESFI: src bir gercek pakettir ve `src.*` olarak import edilir (STRIP EDILMEZ).
+# where=["."] + include=["src*"] -> wheel'e `src` ve tum `src.*` alt-paketleri girer.
+# tools/ paketlenmez (src icinde 'tools.' importu YOK -- olculdu). assets/ (icon/fonts)
+# Python-disi veri, ayri PACKAGING-UX/B1 konusu.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+# DASHBOARD UI PAKET VERISI (2026-08-21, P1a): owner dashboard'in HTML/JS'i artik
+# src/dashboard/ui/ altinda TEK kaynak ve wheel'e PAKET VERISI olarak girer. Boylece
+# `pip install .` sonrasi /dashboard, /dashboard/app.js, /terms kurulu paketten servis
+# edilir (eski dashboard_ui/ repo-koku hesabi wheel'de kiriliyordu). routes.py bunlari
+# importlib.resources('src.dashboard'/ui) ile okur.
+[tool.setuptools.package-data]
+"src.dashboard" = ["ui/*.html", "ui/*.js"]
 
 # [project.urls]
 # TR-NOT: public depo adresi henuz kesin degil; UYDURULMADI. Sahip depoyu actiktan

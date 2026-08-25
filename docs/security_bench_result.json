@@ -1,11 +1,11 @@
 {
   "meta": {
-    "date": "2026-08-19T16:54:28",
+    "date": "2026-08-19T19:40:19",
     "os": "Windows-11-10.0.26200-SP0",
     "os_build": "10.0.26200",
     "python": "3.14.5",
     "host": "DESKTOP-ABPQV0G",
-    "commit": "8d6fa07",
+    "commit": "0ba1dc5",
     "config_hash": "7ec93e4833a5",
     "webview2": "151.0.4129.93",
     "tier": "base"
@@ -63,10 +63,10 @@
     {
       "id": "AUTHZ-DENY",
       "category": "authz",
-      "title": "bound token for agent_id='unauthz_9d0aea' with NO grants, tool profile_read",
+      "title": "bound token for agent_id='unauthz_e7c5a9' with NO grants, tool profile_read",
       "status": "PASS",
       "severity": "critical",
-      "evidence": "Status code: 403; permission-broker refusal: True; body: {\"detail\":\"Ajan 'unauthz_9d0aea' için 'user.name' okuma izni yok.\"}"
+      "evidence": "Status code: 403; permission-broker refusal: True; body: {\"detail\":\"Ajan 'unauthz_e7c5a9' için 'user.name' okuma izni yok.\"}"
     },
     {
       "id": "AUTHZ-BIND",
@@ -172,7 +172,7 @@
       "title": "Secret Detection with Detect-Secrets (allowlist-suzulmus)",
       "status": "PASS",
       "severity": "critical",
-      "evidence": "0 denetlenmemis secret (29 allowlist'li bastirildi; gerekce: secret_allowlist.json)",
+      "evidence": "0 denetlenmemis secret (28 allowlist'li bastirildi; gerekce: secret_allowlist.json)",
       "remediation": "bearer_token: owner-only ACL uygulandi; kalan -> rotasyon + DPAPI-wrap/at-rest (owner-gated). Yeni bulgu gercekse kaynaktan kaldir, fixture/FP ise gerekceyle secret_allowlist.json'a ekle."
     },
     {

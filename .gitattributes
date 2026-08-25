@@ -1,0 +1,20 @@
+# Satir sonu normalizasyonu (2026-08-20).
+# Depoda .gitattributes YOKTU; commit'lerdeki "LF -> CRLF" uyarilari ve capraz-platform
+# (Linux CI) kabuk-betigi CRLF riski bundandi. Metin dosyalari repoda LF saklanir;
+# checkout'ta platform yereli uygulanir. Yeni/degisen dosyalara uygulanir (mevcutlar
+# dokunulunca normale doner) -- bu commit toplu yeniden-normalizasyon YAPMAZ.
+* text=auto eol=lf
+
+# Windows-ozel betikler CRLF kalir (bazi baglamlarda PowerShell/cmd CRLF bekler).
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary -- git dokunmaz, diff kirletmez.
+*.db binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary

@@ -181,8 +181,14 @@ class Vault:
                 hasher.update(details_stored.encode("utf-8"))
                 hasher.update(last_hash.encode("utf-8"))
                 entry_hash = hasher.hexdigest()
-                conn.execute("UPDATE audit SET details=?, previous_hash=?, entry_hash=? WHERE id=?",
-                             (details_stored, last_hash, entry_hash, row["id"]))
+                
+                # RE-SIGN: Eğer imza anahtarı varsa, yeni hash'i imzala.
+                signature = None
+                if getattr(self, "_audit_signing_key", None):
+                    signature = self._audit_signing_key.sign(entry_hash.encode("utf-8")).hex()
+
+                conn.execute("UPDATE audit SET details=?, previous_hash=?, entry_hash=?, signature=? WHERE id=?",
+                             (details_stored, last_hash, entry_hash, signature, row["id"]))
                 last_hash = entry_hash
 
             # DEBI-2: satiri hala tabloda olan checkpoint muhurlerini yeni hash'e tasi.
@@ -224,9 +230,46 @@ class Vault:
         self.conn.execute("PRAGMA secure_delete=ON")
 
         self._init_schema()
+        self._seed_internal_grants()
         # L2: audit.details at-rest sifreleme icin _db_key gecilir (encrypt-then-hash).
         # Faz-1: Ed25519 signing_key -> her audit satiri imzalanir (bagimsiz dogrulanabilir).
         self.audit_chain = AuditChain(self.conn, key=self._db_key, signing_key=self._audit_signing_key)
+
+    #: KASA'nin KENDI ic bilesenlerinin onyukleme izinleri.
+    #
+    # Turkce not (2026-08-20, olculmus ariza): Damitma motoru
+    # (src/distill/engine.py:256) yazimlarini VaultTools uzerinden ve
+    # agent_id="distill" ile yapiyor. Ama 'distill' ajanina HICBIR YERDE izin
+    # verilmiyordu ve _check_permission yalniz 'system'i muaf tutuyor. Sonuc:
+    # damitmanin urettigi HER olgu "Ajan 'distill' icin yazma izni yok." ile
+    # reddediliyordu ve hata engine.py:266'da errors listesine yutuluyordu --
+    # cagiran yalniz "0 yazildi, 0 karantina" goruyordu. Yani README'nin
+    # anlattigi damitma ozelligi tamamen islevsizdi.
+    #
+    # Neden 'system' yapmadik: distill yazimlarinin denetim kaydinda KENDI
+    # adiyla gorunmesi ve karantina kapisina TABI olmasi gerekir. 'system'
+    # kimligi ikisini de atlar (bkz. _check_permission ve tools.py'deki
+    # pending-semantic-validation dali). Kendi adiyla + dar kapsamla yazmak,
+    # ayricalikli kimlikle yazmaktan daha guvenlidir.
+    #
+    # Bu bir ONYUKLEME olgusudur, ajanin kendine izin vermesi DEGILDIR:
+    # kayit permissions tablosunda gorunur, denetlenebilir ve sahibi
+    # tarafindan revoked_at ile iptal edilebilir.
+    _INTERNAL_GRANTS = (
+        ("distill", "profile:write"),
+        ("distill", "events:read"),
+    )
+
+    def _seed_internal_grants(self):
+        """Ic bilesenlerin onyukleme izinlerini idempotent olarak yazar."""
+        import time as _t
+        cur = self.conn.cursor()
+        for agent_id, scope in self._INTERNAL_GRANTS:
+            cur.execute(
+                "INSERT OR IGNORE INTO permissions (agent_id, scope, granted_at) VALUES (?, ?, ?)",
+                (agent_id, scope, _t.time()),
+            )
+        self.conn.commit()
 
     def _init_schema(self):
         """Veritabanı şemasını ve indekslerini oluşturur."""
